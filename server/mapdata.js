@@ -15,7 +15,7 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 export const DATA_DIR = path.join(here, '..', 'data');
 const BASE_FILE = path.join(DATA_DIR, 'base-grid.bin');
 const COUNTRY_FILE = path.join(DATA_DIR, 'countries.json');
-const CACHE_VERSION = 6;
+const CACHE_VERSION = 7;
 
 // Natural Earth's abbreviated names for places without an ISO code.
 const NAME_FIX = {
@@ -154,7 +154,8 @@ function build() {
       if (c >= 0 && grid[c] === OCEAN) { grid[c] = id; cells = 1; }
     }
     if (cells === 0) continue; // micro-states inside other countries: too small for this grid
-    countries.push({ id, name: englishName(f), nameEn: f.properties.name || '', iso: f.id ? String(f.id) : '' });
+    const a2 = f.id ? isoLib.numericToAlpha2(String(f.id).padStart(3, '0')) : '';
+    countries.push({ id, name: englishName(f), nameEn: f.properties.name || '', iso: f.id ? String(f.id) : '', a2: (a2 || '').toLowerCase() });
     next++;
   }
   // Later countries may have overwritten earlier cells: recount and drop countries left empty.
@@ -169,6 +170,13 @@ function build() {
     const small = counts[prev.id] < counts[c.id] ? prev : c;
     small.name = small.nameEn || small.name + ' ' + small.id;
     byName.set(c.name === small.name ? prev.name : c.name, small === c ? prev : c);
+  }
+  // Short code for invite links (hudut.app/#tr). Territories sharing a parent's ISO code get their id.
+  const usedCodes = new Set();
+  const byCells = [...alive].sort((a, b) => counts[b.id] - counts[a.id]);
+  for (const c of byCells) {
+    c.code = c.a2 && !usedCodes.has(c.a2) ? c.a2 : `c${c.id}`;
+    usedCodes.add(c.code);
   }
   alive.forEach((c, i) => {
     const hue = (i * 137.508) % 360;

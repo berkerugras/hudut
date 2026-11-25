@@ -17,9 +17,11 @@ Sonra tarayıcıda `http://localhost:3000` adresini aç. Aynı ağdaki arkadaşl
 
 ## Oyun kuralları
 
-- **Giriş:** Sadece kullanıcı adı. Şifre yok. Oyundaki biri aynı adı kullanıyorsa başka bir ad seçersin.
-- **Karakter:** Ten, üst, alt rengi, kafa şekli ve başlık seçilir. Tarayıcı hatırlar; bir sonraki girişte "Hızlı başla" ile tek tıkla oyundasın.
-- **Doğma:** Seçtiğin ülkenin içinde doğarsın. O ülkeden oyunda biri varsa onun yanında doğarsın.
+- **Hızlı giriş:** Açılış ekranında isim (isteğe bağlı) ve büyük bir **PLAY** düğmesi var. Ülke seçmezsen en kalabalık ülkeye girersin; daha önce oynadıysan son ülkene. Karakter ve ülke ekranları isteğe bağlı. Şifre yok; aynı isim o an oyundaysa başka bir isim istenir.
+- **Davet linki:** `https://site-adresi/#tr` gibi bir link o ülkeyi seçili açar. Oyunda "Invite friends", ülke ekranında "Copy invite link" bu linki kopyalar. Link paylaşılınca canlı dünya haritasının görseli (`/og.png`) önizleme olarak çıkar.
+- **Cephede doğma:** Ülkenden itiş yapan biri varsa onun yanında, yoksa ülkenin sınır hattında doğarsın. "To the front" (`F`) seni 15 saniyede bir cepheye ışınlar.
+- **Botlar:** Az oyuncu varken yapay zekâlı askerler (isimleri `AI-` ile başlar) devreye girer. Tek oyunculu bir ülkeye 2 bot takım arkadaşı, komşu rakip ülkeye birkaç düşman bot gelir. Gerçek oyuncular geldikçe botlar çekilir, kimse yokken hepsi gider.
+- **Karakter:** Ten, üst, alt rengi, kafa şekli ve başlık. Bere, silindir şapka, taç ve altın üniforma, savaşta kazandığın toplam puanla açılır (300 / 1.000 / 3.000 / 2.000 puan; puan bu tarayıcıda tutulur).
 - **Sınır itme:** Sadece kendi ülkenin topraklarında yürüyebilirsin. Sınıra doğru yürümeye devam etmek sınırı iter.
   - Bir oyuncu önündeki hücreye 1, yanındaki iki hücreye 0,5 güç uygular.
   - Tek bir oyuncunun gücü hücreyi en fazla **%50** itebilir. Hücreyi geçmek için toplam net güç 2 olmalı, yani **aynı noktaya en az iki kişi** yüklenmeli.
@@ -35,9 +37,16 @@ Sonra tarayıcıda `http://localhost:3000` adresini aç. Aynı ağdaki arkadaşl
 | Sniper rifle (keskin nişancı) | 75 | 26 | +%40 |
 | Rocket launcher (roketatar) | 60 (alan) | 18 | +%100 |
 
-- **Sohbet:** `Enter` sohbet kutusunu açar, mesajı yazıp `Enter` ile gönderirsin, `Esc` kapatır. `Tab` herkese (All) ve sadece kendi ülkene (Team) yazmak arasında geçiş yapar. Mesajlar en fazla 140 karakter; 5 saniyede en fazla 5 mesaj gönderilebilir.
+- **Sandıklar:** Cephe hattına her birkaç saniyede bir sandık düşer; üstünden geçen alır. *Medkit* canı doldurur, *Push boost* 12 saniye boyunca 2 kat hızlı iter, *Heavy weapon* roketatar, keskin nişancı ya da pompalı verir.
+- **Puan ve sıralama:** Ele geçirmeye katıldığın her hücre 10, başkent 100, vuruş 25, geri püskürttüğün itiş 5 puan. Sağ üstte turun en iyi oyuncuları ve en çok büyüyen ülkeler görünür. Ölünce o canda ne yaptığını (hücre, vuruş, puan, sıra) gösteren bir özet çıkar; "Share" ile paylaşılabilir bir görsel oluşur.
+- **Ödül ve moral:** Ölmeden 5 kişi vuranın başına ödül konur (ismi kırmızı yanar); onu vuran 100 puan daha alır. Biri vurulunca vuranın yakınındaki takım arkadaşları 8 saniye %50 hızlı iter.
+- **Başkentler:** Yaklaşık 100 başkent haritada bayrakla işaretli. Başkent iki kat yavaş itilir; düşünce herkese duyurulur.
+- **Denge:** Küçük ülkeler daha hızlı, çok büyük ülkeler daha yavaş iter ve savunur (en fazla +%50 / −%30). Böylece büyük ülke her şeyi yutamaz.
+- **Turlar:** Her 24 saatte bir tur biter; en çok hücre kazanan ülke kazanır, harita gerçek dünyaya döner ve puanlar sıfırlanır.
+- **Efektler:** Yakında hücre alınınca parlama ve ses, 4 saniyede 3 hücre alınca "Breakthrough!", vurulunca ekran sarsıntısı, itiş sırasında gürültü. `M` sesi açıp kapatır.
+- **Sohbet:** `Enter` sohbet kutusunu açar, mesajı yazıp `Enter` ile gönderirsin, `Esc` kapatır. `Tab` herkese (All) ve sadece kendi ülkene (Team) yazmak arasında geçiş yapar. Mesajlar en fazla 140 karakter; 5 saniyede en fazla 5 mesaj. Küfür ve hakaretler yıldızlanır; sohbette bir isme tıklayınca o oyuncu bu cihazda susturulur.
 
-Kontroller: `W A S D` veya ok tuşları ile yürü, fare ile nişan al, sol tık ile ateş et, fare tekerleği ile yakınlaş/uzaklaş, `Enter` ile sohbet et.
+Kontroller: `W A S D` veya ok tuşları ile yürü, fare ile nişan al, sol tık ile ateş et, fare tekerleği ile yakınlaş/uzaklaş, `Enter` sohbet, `F` cepheye git, `M` ses. "Move: mouse" seçilirse karakter fareyi takip eder (slither tarzı). Telefonda ekranın sol yarısına dokunup sürükleyerek yürürsün; **FIRE** basılı tutulunca en yakın düşmana kendiliğinden nişan alır.
 
 ### Hareket nasıl çalışıyor
 
@@ -49,7 +58,9 @@ Her oyuncu kendi karakterini kendi tarayıcısında yürütür ve konumunu sunuc
 |---|---|---|
 | `PORT` | `3000` | Sunucunun dinlediği port |
 | `WEAPON_INTERVAL_SEC` | `30` | Silah dağıtım aralığı (saniye) |
-| `MAX_PLAYERS` | `100` | Aynı anda en fazla kaç oyuncu |
+| `ROUND_MINUTES` | `1440` | Bir turun süresi (dakika); varsayılan 24 saat |
+| `MAX_BOTS` | `20` | Aynı anda en fazla kaç bot (`0` botları kapatır) |
+| `MAX_PLAYERS` | `100` | Aynı anda en fazla kaç gerçek oyuncu |
 
 Sınır ayarları (itme hızı, tek kişi sınırı vb.) `shared/constants.js` dosyasındadır.
 
@@ -65,7 +76,7 @@ Sınır ayarları (itme hızı, tek kişi sınırı vb.) `shared/constants.js` d
 npm test
 ```
 
-Doğrulananlar: tek oyuncu sınırı geçemez, iki oyuncu geçer, bir savunan bir saldıranı dengeler, silah sadece hızı artırır; normal yürüyüş kabul edilir, ışınlanma ve düşman toprağına girme reddedilir; sohbet metni temizlenir.
+Doğrulananlar: tek oyuncu sınırı geçemez, iki oyuncu geçer, bir savunan bir saldıranı dengeler, silah sadece hızı artırır; normal yürüyüş kabul edilir, ışınlanma ve düşman toprağına girme reddedilir; hızlı giriş en kalabalık ülkeye götürür; ilk oyuncu sınırda doğar; botlar gelir, sınıra yürür ve insan çıkınca gider; vuruş, ödül ve hücre puanları; başkentler; sandıklar; tur sonu ve harita sıfırlanması; "cepheye git"; denge çarpanı; küfür filtresi; önizleme görseli.
 
 ## İnternete açmak
 

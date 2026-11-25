@@ -1,33 +1,41 @@
-// Screens: name -> character -> country -> game. Keeps the profile in localStorage so returning players start in one click.
+// Screens: one-click Play (with optional character and country screens) -> game.
+// Invite links like /#tr open the game with that country already chosen.
 import { io } from '/socket.io/socket.io.esm.min.js';
 import { LOOK, GRID_W, GRID_H, sanitizeLook } from '/shared/constants.js';
 import { MapPainter } from './mapview.js';
 import { createPreview } from './character.js';
 import { createGame } from './game.js';
+import { unlockAudio } from './sfx.js';
+import { unlockNeeded } from './career.js';
+import { copyText } from './share.js';
 
 const $ = (id) => document.getElementById(id);
 const NAME_RE = /^[\p{L}\p{N}_.-]{3,16}$/u;
 const fmt = (n) => Number(n).toLocaleString('en-US');
 const plural = (n, one, many) => `${fmt(n)} ${n === 1 ? one : many}`;
+const fold = (s) => s.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase();
 const store = {
   get(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch { return d; } },
   set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* private mode */ } },
 };
+const randomLook = () => ({
+  skin: Math.floor(Math.random() * LOOK.skin.length), shirt: Math.floor(Math.random() * 8),
+  pants: Math.floor(Math.random() * LOOK.pants.length), head: Math.floor(Math.random() * 2), hat: Math.floor(Math.random() * 4),
+});
 
-const profile = Object.assign(
-  { name: '', look: { skin: 1, shirt: 4, pants: 0, head: 0, hat: 1 }, country: 0 },
-  store.get('hudut.profile', {}),
-);
+const saved = store.get('hudut.profile', null);
+const profile = Object.assign({ name: '', look: randomLook(), country: 0 }, saved || {});
 profile.look = sanitizeLook(profile.look);
 const saveProfile = () => store.set('hudut.profile', profile);
+if (!saved) saveProfile();
 
 const state = {
   screen: 'login',
   countries: [],
   byId: new Map(),
+  byCode: new Map(),
   grid: null,
-  weaponIntervalMs: 30 * 60 * 1000,
-  selected: 0,
+  selected: profile.country || 0, // 0 = let the server pick the busiest country
   hover: 0,
   joining: false,
   game: null,
@@ -35,6 +43,7 @@ const state = {
 };
 const painter = new MapPainter();
 const socket = io();
+const inviteUrl = (code) => `${location.origin}/#${code}`;
 
 // ---------------- data ----------------
 function intervalText(ms) {
@@ -52,13 +61,13 @@ async function refreshWorld() {
     applyCountries(data.countries);
     state.grid = new Uint8Array(buf);
     painter.setGrid(state.grid);
-    state.weaponIntervalMs = data.weaponIntervalMs;
     $('onlineText').textContent = data.players
       ? `${plural(data.players, 'player', 'players')} in the game right now`
       : 'Nobody is playing yet. Be the first.';
     $('ruleInterval').textContent = intervalText(data.weaponIntervalMs);
+    applyHash();
     drawBackground();
-    updateQuick();
+    updatePlayWhere();
     if (state.screen === 'country') { renderList(); drawPickMap(); updatePickInfo(); }
   } catch {
     $('onlineText').textContent = "Can't reach the server. Make sure it is running.";
@@ -67,8 +76,16 @@ async function refreshWorld() {
 function applyCountries(list) {
   state.countries = list;
   state.byId = new Map(list.map((c) => [c.id, c]));
+  state.byCode = new Map(list.map((c) => [c.code, c]));
   painter.setCountries(list);
 }
+// /#tr -> Türkiye is preselected.
+function applyHash() {
+  const code = decodeURIComponent(location.hash.slice(1)).toLowerCase();
+  const c = code && state.byCode.get(code);
+  if (c && c.cells > 0) state.selected = c.id;
+}
+window.addEventListener('hashchange', () => { applyHash(); updatePlayWhere(); });
 
 function drawBackground() {
   if (!state.grid) return;
@@ -79,7 +96,7 @@ function drawBackground() {
   c.height = h;
   const ctx = c.getContext('2d');
   ctx.imageSmoothingEnabled = false;
-  const src = painter.paint({ mine: profile.country || -1 });
+  const src = painter.paint({ mine: state.selected || -1 });
   const scale = Math.max(w / GRID_W, h / GRID_H);
   ctx.drawImage(src, (w - GRID_W * scale) / 2, (h - GRID_H * scale) / 2, GRID_W * scale, GRID_H * scale);
 }
@@ -93,46 +110,65 @@ function show(screen) {
   $('bgMap').hidden = screen === 'game';
   if (screen === 'char') openChar(); else if (preview) preview.stop();
   if (screen === 'country') openCountry(); else clearInterval(state.refreshTimer);
-  if (screen === 'login') $('nameInput').focus({ preventScroll: true });
+  if (screen === 'login') { updatePlayWhere(); drawBackground(); }
 }
 
-// ---- step 1: name ----
+// ---- Play ----
 function loginError(msg) {
   const el = $('loginError');
   el.textContent = msg || '';
   el.hidden = !msg;
 }
-function updateQuick() {
-  const btn = $('quickBtn');
-  const c = state.byId.get(profile.country);
-  if (profile.name && c && c.cells > 0) {
-    const b1 = document.createElement('b'); b1.textContent = profile.name;
-    const b2 = document.createElement('b'); b2.textContent = c.name;
-    btn.replaceChildren('Quick start: fight for ', b2, ' as ', b1);
-    btn.hidden = false;
+function updatePlayWhere() {
+  const el = $('playWhere');
+  const c = state.byId.get(state.selected);
+  const change = document.createElement('button');
+  change.type = 'button';
+  change.className = 'linkish';
+  change.textContent = 'Change';
+  change.addEventListener('click', () => show('country'));
+  const b = document.createElement('b');
+  if (c && c.cells > 0) {
+    b.textContent = c.name;
+    el.replaceChildren("You'll fight for ", b, c.online ? ` (${fmt(c.online)} playing). ` : '. ', change);
+    return;
+  }
+  let best = null;
+  for (const x of state.countries) if (x.online && x.cells > 0 && (!best || x.online > best.online)) best = x;
+  if (best) {
+    b.textContent = best.name;
+    el.replaceChildren("You'll join ", b, `, where ${plural(best.online, 'person is', 'people are')} playing. `, change);
   } else {
-    btn.hidden = true;
+    el.replaceChildren('You\'ll join a country at war. AI soldiers fight beside you until friends arrive. ', change);
   }
 }
-$('nameInput').value = profile.name;
-$('loginForm').addEventListener('submit', (e) => {
-  e.preventDefault();
-  const name = $('nameInput').value.trim();
+function doPlay() {
+  unlockAudio(); // sound may only start after a click
+  let name = $('nameInput').value.trim();
+  if (!name) {
+    name = profile.name || `Soldier${Math.floor(1000 + Math.random() * 9000)}`;
+    $('nameInput').value = name;
+  }
   if (!NAME_RE.test(name)) {
-    loginError('Usernames are 3–16 characters: letters, numbers, _ . -');
+    show('login');
+    loginError('Names are 3–16 characters: letters, numbers, _ . -');
     return;
   }
   loginError('');
   profile.name = name;
   saveProfile();
-  show('char');
-});
-$('quickBtn').addEventListener('click', () => join(profile.country));
+  const c = state.byId.get(state.selected);
+  join(c && c.cells > 0 ? c.id : 'auto');
+}
+$('nameInput').value = profile.name;
+$('loginForm').addEventListener('submit', (e) => { e.preventDefault(); doPlay(); });
+$('openChar').addEventListener('click', () => show('char'));
+$('openCountry').addEventListener('click', () => show('country'));
 
-// ---- step 2: character ----
+// ---- character ----
 let preview = null;
 const SWATCH_LABEL = { skin: 'Skin tone', shirt: 'Top color', pants: 'Bottom color' };
-const CHIP_LABEL = { head: ['Round', 'Square'], hat: ['None', 'Cap', 'Helmet', 'Beanie'] };
+const CHIP_LABEL = { head: ['Round', 'Square'], hat: ['None', 'Cap', 'Helmet', 'Beanie', 'Beret', 'Top hat', 'Crown'] };
 function openChar() {
   if (!preview) preview = createPreview($('charCanvas'));
   preview.start();
@@ -145,16 +181,23 @@ function renderOptions() {
     const swatch = wrap.classList.contains('swatches');
     wrap.replaceChildren(...LOOK[key].map((val, i) => {
       const b = document.createElement('button');
+      const need = unlockNeeded(key, i);
       b.type = 'button';
       b.setAttribute('role', 'radio');
       b.setAttribute('aria-checked', String(profile.look[key] === i));
       if (swatch) {
         b.className = 'swatch-btn';
         b.style.background = val;
-        b.setAttribute('aria-label', `${SWATCH_LABEL[key]} ${i + 1}`);
+        b.setAttribute('aria-label', `${SWATCH_LABEL[key]} ${i + 1}${need ? `, unlocks at ${fmt(need)} points` : ''}`);
       } else {
         b.className = 'chip';
         b.textContent = CHIP_LABEL[key][i];
+      }
+      if (need) {
+        b.disabled = true;
+        b.classList.add('locked');
+        b.title = `Unlocks at ${fmt(need)} points`;
+        if (!swatch) b.textContent += ` · ${fmt(need)}`;
       }
       b.addEventListener('click', () => setLook(key, i));
       return b;
@@ -162,6 +205,7 @@ function renderOptions() {
   });
 }
 function setLook(key, i) {
+  if (unlockNeeded(key, i)) return;
   profile.look[key] = i;
   saveProfile();
   preview.setLook(profile.look);
@@ -169,19 +213,18 @@ function setLook(key, i) {
 }
 $('charBack').addEventListener('click', () => show('login'));
 $('charRandom').addEventListener('click', () => {
-  for (const key of Object.keys(LOOK)) profile.look[key] = Math.floor(Math.random() * LOOK[key].length);
+  profile.look = randomLook();
   saveProfile();
   preview.setLook(profile.look);
   renderOptions();
 });
-$('charNext').addEventListener('click', () => show('country'));
+$('charPlay').addEventListener('click', doPlay);
 
-// ---- step 3: country ----
+// ---- country ----
 const pickMap = $('pickMap');
 pickMap.width = GRID_W;
 pickMap.height = GRID_H;
 function openCountry() {
-  if (!state.selected && state.byId.get(profile.country)?.cells > 0) state.selected = profile.country;
   joinError('');
   renderList();
   sizePickMap();
@@ -202,8 +245,7 @@ function sizePickMap() {
 new ResizeObserver(() => { if (state.screen === 'country') sizePickMap(); }).observe($('mapWrap'));
 function drawPickMap() {
   if (!state.grid) return;
-  const ctx = pickMap.getContext('2d');
-  ctx.drawImage(painter.paint({ highlight: state.hover || -1, mine: state.selected || -1 }), 0, 0);
+  pickMap.getContext('2d').drawImage(painter.paint({ highlight: state.hover || -1, mine: state.selected || -1 }), 0, 0);
 }
 function ownerAtEvent(e) {
   const r = pickMap.getBoundingClientRect();
@@ -234,7 +276,6 @@ $('countrySearch').addEventListener('input', renderList);
 let listKey = '';
 function renderList() {
   // Accent-insensitive search, so "turkiye" finds "Türkiye" and "cote" finds "Côte d’Ivoire".
-  const fold = (s) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
   const q = fold($('countrySearch').value.trim());
   const list = state.countries
     .filter((c) => c.cells > 0 && (!q || fold(c.name).includes(q)))
@@ -268,6 +309,7 @@ function select(id) {
 function updatePickInfo() {
   const c = state.byId.get(state.selected);
   const btn = $('joinBtn');
+  $('copyInvite').hidden = !(c && c.cells > 0);
   if (!c || c.cells <= 0) {
     $('pickInfo').textContent = 'Pick a country on the map or in the list.';
     btn.textContent = 'Choose a country';
@@ -285,30 +327,38 @@ function joinError(msg) {
   el.textContent = msg || '';
   el.hidden = !msg;
 }
-$('joinBtn').addEventListener('click', () => { if (state.selected) join(state.selected); });
-$('countryBack').addEventListener('click', () => show('char'));
+$('joinBtn').addEventListener('click', () => { if (state.selected) doPlay(); });
+$('copyInvite').addEventListener('click', async () => {
+  const c = state.byId.get(state.selected);
+  if (!c) return;
+  const url = inviteUrl(c.code);
+  joinError('');
+  $('pickInfo').append(document.createElement('br'), (await copyText(url)) ? `Invite link copied: ${url}` : `Invite link: ${url}`);
+});
+$('countryBack').addEventListener('click', () => show('login'));
 
 // ---------------- game ----------------
 function join(country) {
   if (state.joining) return;
   state.joining = true;
   $('joinBtn').disabled = true;
-  $('quickBtn').disabled = true;
+  $('playBtn').disabled = true;
   socket.timeout(8000).emit('join', { name: profile.name, country, look: profile.look }, (err, res) => {
     state.joining = false;
-    $('quickBtn').disabled = false;
+    $('playBtn').disabled = false;
     updatePickInfo();
     if (err || !res) return failJoin("The server didn't answer. Check your connection and try again.");
     if (res.error) return failJoin(res.error, res.code);
-    profile.country = country;
+    profile.country = res.country;
+    state.selected = res.country;
     saveProfile();
     applyCountries(res.countries);
     show('game');
-    state.game = createGame({ socket, init: res, countries: res.countries, onExit: exitGame });
+    state.game = createGame({ socket, init: res, countries: res.countries, onExit: exitGame, inviteUrl });
   });
 }
 function failJoin(msg, code) {
-  if (code === 'name') { show('login'); loginError(msg); return; }
+  if (code === 'name' || state.screen === 'login') { show('login'); loginError(msg); return; }
   show('country');
   joinError(msg);
 }
@@ -327,7 +377,7 @@ socket.on('connect', () => {
     // The server forgot us when the connection dropped: join the same country again.
     state.game.stop();
     state.game = null;
-    join(profile.country);
+    join(profile.country || 'auto');
   }
 });
 socket.on('connect_error', () => {

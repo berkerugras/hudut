@@ -15,6 +15,11 @@ const geo = {
   helmet: new THREE.SphereGeometry(0.255, 18, 10, 0, Math.PI * 2, 0, Math.PI / 2.1),
   beanie: new THREE.CylinderGeometry(0.19, 0.225, 0.2, 18),
   pompom: new THREE.SphereGeometry(0.065, 10, 8),
+  beret: new THREE.CylinderGeometry(0.24, 0.23, 0.07, 20),
+  tophat: new THREE.CylinderGeometry(0.15, 0.15, 0.3, 20),
+  tophatBrim: new THREE.CylinderGeometry(0.26, 0.26, 0.025, 24),
+  crownBand: new THREE.CylinderGeometry(0.2, 0.2, 0.1, 20, 1, true),
+  crownSpike: new THREE.ConeGeometry(0.045, 0.12, 6),
   shadow: new THREE.CircleGeometry(0.36, 24).rotateX(-Math.PI / 2),
   gunGrip: new THREE.BoxGeometry(0.07, 0.07, 0.14),
 };
@@ -92,6 +97,28 @@ export function buildCharacter(look) {
     const top = new THREE.Mesh(geo.beanie, bm); top.position.y = hatY + 0.06; top.scale.setScalar(hatScale);
     const pom = new THREE.Mesh(geo.pompom, m('#f2f2f2')); pom.position.y = hatY + 0.2 * hatScale;
     body.add(top, pom);
+  } else if (L.hat === 'beret') {
+    const top = new THREE.Mesh(geo.beret, m('#7a1f2b'));
+    top.position.set(-0.03, hatY + 0.1 * hatScale, 0.02);
+    top.rotation.x = 0.18;
+    top.scale.setScalar(hatScale);
+    body.add(top);
+  } else if (L.hat === 'tophat') {
+    const hm = m('#16181c');
+    const brim = new THREE.Mesh(geo.tophatBrim, hm); brim.position.y = hatY + 0.12 * hatScale; brim.scale.setScalar(hatScale);
+    const top = new THREE.Mesh(geo.tophat, hm); top.position.y = hatY + 0.27 * hatScale; top.scale.setScalar(hatScale);
+    body.add(brim, top);
+  } else if (L.hat === 'crown') {
+    const gold = new THREE.MeshStandardMaterial({ color: '#e7b93e', roughness: 0.35, metalness: 0.6, flatShading: true, side: THREE.DoubleSide });
+    mats.push(gold);
+    const band = new THREE.Mesh(geo.crownBand, gold); band.position.y = hatY + 0.14 * hatScale; band.scale.setScalar(hatScale);
+    body.add(band);
+    for (let i = 0; i < 5; i++) {
+      const a = (i / 5) * Math.PI * 2;
+      const s = new THREE.Mesh(geo.crownSpike, gold);
+      s.position.set(Math.cos(a) * 0.18 * hatScale, hatY + 0.24 * hatScale, Math.sin(a) * 0.18 * hatScale);
+      body.add(s);
+    }
   }
 
   // Weapon sits in the right hand and points along the arm.

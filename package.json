@@ -8,7 +8,7 @@
   "scripts": {
     "start": "node server/index.js",
     "reset-map": "node server/reset-map.js",
-    "test": "node --test test/pressure.test.js"
+    "test": "node --test test/pressure.test.js test/features.test.js"
   },
   "engines": {
     "node": ">=20"

@@ -35,13 +35,42 @@ export const WEAPONS = {
 };
 export const WEAPON_IDS = Object.keys(WEAPONS);
 
+// ---- Scoring and momentum ----
+export const SCORE = { capture: 10, capital: 100, kill: 25, bounty: 100, defend: 5 };
+export const BOUNTY_STREAK = 5; // kills without dying that put a bounty on your head
+export const MORALE_MS = 8000; // after a kill, nearby teammates push faster for this long...
+export const MORALE_MULT = 1.5; // ...by this much
+export const MORALE_RADIUS = 6;
+export const BOOST_MS = 12000; // "Push boost" crate
+export const BOOST_MULT = 2;
+export const FRONT_COOLDOWN_MS = 15000; // "To the front" teleport
+export const CAPITAL_SLOWDOWN = 0.5; // capitals take twice as long to push
+
+// Small countries push and defend faster, huge ones slower, so the map doesn't just snowball.
+export function underdogFactor(cells) {
+  return Math.min(1.5, Math.max(0.7, Math.pow(300 / Math.max(1, cells), 0.25)));
+}
+
+// ---- Supply crates (dropped near the front lines) ----
+export const CRATES = ['medkit', 'boost', 'arsenal'];
+export const CRATE_INFO = {
+  medkit: { name: 'Medkit', text: 'Health restored' },
+  boost: { name: 'Push boost', text: 'You push borders twice as fast for 12 s' },
+  arsenal: { name: 'Heavy weapon', text: 'You picked up a heavy weapon' },
+};
+
 // ---- Character customisation (indices into these lists) ----
 export const LOOK = {
   skin: ['#f3d2b3', '#e0ac85', '#c68863', '#8d5a3c', '#5b3a29'],
-  shirt: ['#d64545', '#e8873a', '#e3c34a', '#4caf6e', '#3a8fd6', '#6a5acd', '#2f3a4a', '#efefef'],
+  shirt: ['#d64545', '#e8873a', '#e3c34a', '#4caf6e', '#3a8fd6', '#6a5acd', '#2f3a4a', '#efefef', '#d4a73a'],
   pants: ['#2b3442', '#4a5568', '#6b4f3a', '#3d5a40', '#1f2a5a'],
   head: ['round', 'box'],
-  hat: ['none', 'cap', 'helmet', 'beanie'],
+  hat: ['none', 'cap', 'helmet', 'beanie', 'beret', 'tophat', 'crown'],
+};
+// Cosmetics unlocked by total score earned on this device: { key: { index: points } }
+export const UNLOCKS = {
+  shirt: { 8: 2000 },
+  hat: { 4: 300, 5: 1000, 6: 3000 },
 };
 export function sanitizeLook(look) {
   const pick = (key) => {

@@ -4,7 +4,16 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Hudut</title>
-  <meta name="description" content="A multiplayer browser game on the world map: push your country's borders together with your teammates.">
+  <meta name="description" content="A multiplayer border war on the world map. Pick a country, push the border with your teammates, and take the world one cell at a time.">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Hudut: push your country's borders together">
+  <meta property="og:description" content="A free multiplayer browser game on the live world map. Alone you can only bend a border; breaking through takes a team.">
+  <meta property="og:url" content="__ORIGIN__/">
+  <meta property="og:image" content="__ORIGIN__/og.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="theme-color" content="#0e171c">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=Saira+Condensed:wght@600;700;800&display=swap">
@@ -22,27 +31,41 @@
   <!-- In-game HUD -->
   <div id="hud" hidden>
     <div class="hud-top">
-      <div class="panel hud-card">
+      <div class="panel hud-card country">
         <span class="swatch" id="hudSwatch"></span>
         <div>
           <div class="hud-title" id="hudCountry">—</div>
           <div class="hud-sub"><span id="hudCells">0</span> cells · <span id="hudOnline">1</span> playing</div>
+          <div class="hud-sub" id="hudRound">Round 1</div>
+          <div class="hud-sub underdog" id="hudUnderdog" hidden></div>
         </div>
       </div>
-      <div class="panel hud-card weapon">
-        <div>
-          <div class="hud-label">Weapon</div>
-          <div class="hud-title" id="hudWeapon">No weapon</div>
-          <div class="hud-sub" id="hudWeaponSub">Wait for the next drop</div>
+      <div class="hud-right">
+        <div class="panel hud-card weapon">
+          <div>
+            <div class="hud-label">Weapon</div>
+            <div class="hud-title" id="hudWeapon">No weapon</div>
+            <div class="hud-sub" id="hudWeaponSub">Wait for the next drop</div>
+          </div>
+          <div class="drop">
+            <div class="hud-label">Next drop</div>
+            <div class="drop-time" id="hudDrop">--:--</div>
+          </div>
         </div>
-        <div class="drop">
-          <div class="hud-label">Next drop</div>
-          <div class="drop-time" id="hudDrop">--:--</div>
+        <div class="panel board" id="board">
+          <div class="hud-label">Top players this round</div>
+          <ol id="boardPlayers"></ol>
+          <p class="board-me" id="boardMe"></p>
+          <div class="hud-label">Growing fastest</div>
+          <ol id="boardCountries"></ol>
         </div>
+        <ol id="feed" class="feed" aria-live="polite"></ol>
       </div>
     </div>
 
-    <ol id="feed" class="feed" aria-live="polite"></ol>
+    <div class="banner" id="banner" hidden></div>
+    <div id="toast" class="toast" hidden></div>
+    <div class="breakthrough" id="breakthrough" hidden>Breakthrough!</div>
 
     <div class="chat" id="chat">
       <ol id="chatLog" class="chat-log" aria-live="polite" aria-label="Chat"></ol>
@@ -50,7 +73,7 @@
         <button type="button" id="chatScope" class="chat-scope" aria-pressed="false" title="Tab switches between everyone and your team">All</button>
         <input id="chatInput" maxlength="140" spellcheck="false" aria-label="Chat message" placeholder="Message everyone…">
       </form>
-      <p class="chat-hint" id="chatHint"><kbd>Enter</kbd> chat · <kbd>Tab</kbd> everyone / team</p>
+      <p class="chat-hint" id="chatHint"><kbd>Enter</kbd> chat · <kbd>Tab</kbd> everyone / team · click a name to mute</p>
     </div>
 
     <div class="hud-bottom">
@@ -59,30 +82,60 @@
       </div>
       <div class="center-stack">
         <div id="pushBox" class="panel push" hidden>
-          <div class="push-head"><span>Pushing the border</span><b id="pushPct">0%</b></div>
+          <div class="push-head"><span id="pushTitle">Pushing the border</span><b id="pushPct">0%</b></div>
           <div class="push-bar"><i id="pushBar"></i><em title="How far one player can push"></em></div>
           <p id="pushHint">Keep pushing.</p>
         </div>
-        <div class="hp" aria-label="Health"><i id="hpBar"></i><span id="hpText">100</span></div>
+        <div class="vitals">
+          <div class="hp" aria-label="Health"><i id="hpBar"></i><span id="hpText">100</span></div>
+          <div class="score-chip" id="scoreChip">0 pts</div>
+        </div>
       </div>
       <div class="panel help">
-        <div><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> walk, push into a border</div>
-        <div><kbd>Mouse</kbd> aim · <kbd>Left click</kbd> shoot</div>
-        <div><kbd>Wheel</kbd> zoom · <kbd>Enter</kbd> chat</div>
-        <button class="btn ghost small" id="btnChangeCountry" type="button">Change country</button>
+        <div class="help-keys">
+          <div><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> walk, push into a border</div>
+          <div><kbd>Mouse</kbd> aim · <kbd>Left click</kbd> shoot</div>
+          <div><kbd>Wheel</kbd> zoom · <kbd>Enter</kbd> chat</div>
+        </div>
+        <div class="help-buttons">
+          <button class="btn ghost small" id="btnFront" type="button" title="F">To the front</button>
+          <button class="btn ghost small" id="btnInvite" type="button">Invite friends</button>
+          <button class="btn ghost small" id="btnMove" type="button">Move: keys</button>
+          <button class="btn ghost small" id="btnSound" type="button" title="M">Sound: on</button>
+          <button class="btn ghost small" id="btnChangeCountry" type="button">Change country</button>
+        </div>
       </div>
     </div>
 
-    <div id="deathBox" class="death" hidden>
+    <div id="deathBox" class="death panel" hidden>
       <p class="death-title">You're down</p>
       <p id="deathText"></p>
-      <p class="death-timer">Respawning in <b id="deathTimer">5</b> s</p>
+      <dl class="death-stats" id="deathStats"></dl>
+      <p class="death-timer">Back in the fight in <b id="deathTimer">5</b> s</p>
+      <div class="row center">
+        <button class="btn ghost small" id="deathShare" type="button">Share</button>
+        <button class="btn ghost small" id="deathChange" type="button">Change country</button>
+      </div>
     </div>
-    <div id="toast" class="toast" hidden></div>
+
+    <div id="roundBox" class="round-box panel" hidden>
+      <p class="eyebrow" id="roundEyebrow">Round over</p>
+      <h2 id="roundTitle"></h2>
+      <div class="round-cols">
+        <div><div class="hud-label">Countries</div><ol id="roundCountries"></ol></div>
+        <div><div class="hud-label">Players</div><ol id="roundPlayers"></ol></div>
+      </div>
+      <p class="round-note">The map is back to the real world. A new round has started.</p>
+      <div class="row center">
+        <button class="btn ghost small" id="roundShare" type="button">Share</button>
+        <button class="btn primary small" id="roundClose" type="button">Keep fighting</button>
+      </div>
+    </div>
+
     <div id="netBox" class="net" hidden>Connection lost. Reconnecting…</div>
   </div>
 
-  <!-- Step 1: name -->
+  <!-- Play -->
   <section id="scrLogin" class="screen">
     <div class="card login-card">
       <header class="brand">
@@ -90,23 +143,26 @@
         <h1>Hudut</h1>
         <p class="tagline">Alone you can only bend a border. Breaking through takes a team.</p>
       </header>
-      <ol class="rules">
-        <li><span><b>Pick your country</b> and spawn on its land.</span></li>
-        <li><span><b>Walk to the border and push.</b> On your own you can push it half a cell at most. When two players push the same spot, the border moves.</span></li>
-        <li><span><b>A random weapon every <span id="ruleInterval">30 seconds</span>.</b> Weapons push borders faster and let you shoot players across the line.</span></li>
-      </ol>
-      <form id="loginForm" class="stack" novalidate>
-        <label for="nameInput">Username</label>
-        <input id="nameInput" name="name" maxlength="16" autocomplete="nickname" spellcheck="false" placeholder="e.g. borderguard">
+      <form id="loginForm" class="play-form" novalidate>
+        <input id="nameInput" name="name" maxlength="16" autocomplete="nickname" spellcheck="false" placeholder="Your name (optional)" aria-label="Your name">
+        <button class="btn primary play" id="playBtn" type="submit">Play</button>
+        <p class="play-where" id="playWhere"></p>
         <p class="field-error" id="loginError" hidden></p>
-        <button class="btn primary" type="submit">Continue</button>
       </form>
-      <button class="btn quick" id="quickBtn" type="button" hidden></button>
+      <div class="row">
+        <button class="btn ghost grow" id="openChar" type="button">Customize character</button>
+        <button class="btn ghost grow" id="openCountry" type="button">Choose country</button>
+      </div>
+      <ol class="rules">
+        <li><span><b>Walk into the border to push it.</b> Alone you push it half a cell at most; two people on the same spot break through.</span></li>
+        <li><span><b>A random weapon every <span id="ruleInterval">30 seconds</span>.</b> Grab supply crates at the front for medkits, push boosts and heavy weapons.</span></li>
+        <li><span><b>Take capitals, win the round.</b> The country that grows most wins; then the map resets.</span></li>
+      </ol>
       <p class="online"><span class="dot"></span><span id="onlineText">Connecting to the server…</span></p>
     </div>
   </section>
 
-  <!-- Step 2: character -->
+  <!-- Character -->
   <section id="scrChar" class="screen" hidden>
     <div class="card char-card">
       <div class="char-preview">
@@ -115,7 +171,7 @@
       </div>
       <div class="char-options">
         <header>
-          <p class="eyebrow">Step 2 of 3</p>
+          <p class="eyebrow">Your soldier</p>
           <h2>Design your character</h2>
         </header>
         <div class="opt"><span class="opt-label">Skin</span><div class="swatches" data-key="skin" role="radiogroup" aria-label="Skin tone"></div></div>
@@ -123,24 +179,25 @@
         <div class="opt"><span class="opt-label">Bottom</span><div class="swatches" data-key="pants" role="radiogroup" aria-label="Bottom color"></div></div>
         <div class="opt"><span class="opt-label">Head</span><div class="chips" data-key="head" role="radiogroup" aria-label="Head shape"></div></div>
         <div class="opt"><span class="opt-label">Headwear</span><div class="chips" data-key="hat" role="radiogroup" aria-label="Headwear"></div></div>
+        <p class="unlock-note">Locked items unlock with points you earn in battle.</p>
         <div class="row">
           <button class="btn ghost" id="charBack" type="button">Back</button>
           <button class="btn ghost" id="charRandom" type="button">Random</button>
-          <button class="btn primary grow" id="charNext" type="button">Choose a country</button>
+          <button class="btn primary grow" id="charPlay" type="button">Play</button>
         </div>
       </div>
     </div>
   </section>
 
-  <!-- Step 3: country -->
+  <!-- Country -->
   <section id="scrCountry" class="screen" hidden>
     <div class="card country-card">
       <header class="country-head">
         <div>
-          <p class="eyebrow">Step 3 of 3</p>
+          <p class="eyebrow">Choose a side</p>
           <h2>Where will you spawn?</h2>
         </div>
-        <button class="btn ghost" id="countryBack" type="button">Character</button>
+        <button class="btn ghost" id="countryBack" type="button">Back</button>
       </header>
       <div class="country-body">
         <div class="map-wrap" id="mapWrap">
@@ -154,6 +211,7 @@
             <p id="pickInfo">Pick a country on the map or in the list.</p>
             <p class="field-error" id="joinError" hidden></p>
             <button class="btn primary" id="joinBtn" type="button" disabled>Choose a country</button>
+            <button class="btn ghost small" id="copyInvite" type="button" hidden>Copy invite link</button>
           </div>
         </aside>
       </div>
