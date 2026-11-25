@@ -9,31 +9,41 @@ import { GRID_W, GRID_H, CELL_DEG, OCEAN, ICE } from '../shared/constants.js';
 
 const require = createRequire(import.meta.url);
 const isoLib = require('i18n-iso-countries');
-isoLib.registerLocale(require('i18n-iso-countries/langs/tr.json'));
+const regionNames = new Intl.DisplayNames(['en'], { type: 'region' });
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 export const DATA_DIR = path.join(here, '..', 'data');
 const BASE_FILE = path.join(DATA_DIR, 'base-grid.bin');
 const COUNTRY_FILE = path.join(DATA_DIR, 'countries.json');
-const CACHE_VERSION = 5;
+const CACHE_VERSION = 6;
 
-// Names world-atlas gives without an ISO code, or that read better in Turkish.
+// Natural Earth's abbreviated names for places without an ISO code.
 const NAME_FIX = {
-  Kosovo: 'Kosova',
-  'N. Cyprus': 'Kuzey Kıbrıs',
-  Somaliland: 'Somaliland',
-  'W. Sahara': 'Batı Sahra',
+  'N. Cyprus': 'Northern Cyprus',
+  'W. Sahara': 'Western Sahara',
+  'Indian Ocean Ter.': 'Indian Ocean Territories',
+};
+// Intl's short names that read oddly as a country label in a game.
+const ISO_FIX = {
+  CD: 'DR Congo',
+  CG: 'Republic of the Congo',
+  PS: 'Palestine',
+  MM: 'Myanmar',
+  HK: 'Hong Kong',
+  MO: 'Macau',
 };
 
-function turkishName(f) {
-  const en = f.properties && f.properties.name ? f.properties.name : 'Bilinmeyen';
-  if (NAME_FIX[en]) return NAME_FIX[en];
+function englishName(f) {
+  const ne = f.properties && f.properties.name ? f.properties.name : 'Unknown';
+  if (NAME_FIX[ne]) return NAME_FIX[ne];
   if (f.id) {
     const a2 = isoLib.numericToAlpha2(String(f.id).padStart(3, '0'));
-    const tr = a2 && isoLib.getName(a2, 'tr');
-    if (tr) return tr;
+    if (a2 && ISO_FIX[a2]) return ISO_FIX[a2];
+    let name = '';
+    try { name = a2 ? regionNames.of(a2) : ''; } catch { name = ''; }
+    if (name && name !== a2) return name.replace(/ & /g, ' and ');
   }
-  return en;
+  return ne;
 }
 
 function hsl(h, s, l) {
@@ -144,7 +154,7 @@ function build() {
       if (c >= 0 && grid[c] === OCEAN) { grid[c] = id; cells = 1; }
     }
     if (cells === 0) continue; // micro-states inside other countries: too small for this grid
-    countries.push({ id, name: turkishName(f), nameEn: f.properties.name || '', iso: f.id ? String(f.id) : '' });
+    countries.push({ id, name: englishName(f), nameEn: f.properties.name || '', iso: f.id ? String(f.id) : '' });
     next++;
   }
   // Later countries may have overwritten earlier cells: recount and drop countries left empty.

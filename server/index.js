@@ -74,12 +74,12 @@ io.on('connection', (socket) => {
   socket.on('join', (data, ack) => {
     if (typeof ack !== 'function') return;
     const now = Date.now();
-    if (now - lastJoin < 1000) return ack({ error: 'Çok hızlı denedin. Bir saniye bekleyip tekrar dene.' });
+    if (now - lastJoin < 1000) return ack({ error: 'Too many tries. Wait a second and try again.', code: 'busy' });
     lastJoin = now;
-    if (!playerId && game.players.size >= MAX_PLAYERS) return ack({ error: 'Sunucu şu an dolu. Biraz sonra tekrar dene.' });
+    if (!playerId && game.players.size >= MAX_PLAYERS) return ack({ error: 'The server is full right now. Try again later.', code: 'busy' });
     leaveGame();
     const r = game.join({ name: data && data.name, country: data && data.country, look: sanitizeLook(data && data.look) });
-    if (r.error) return ack({ error: r.error });
+    if (r.error) return ack({ error: r.error, code: r.code });
     playerId = r.player.id;
     socket.join('game');
     ack({

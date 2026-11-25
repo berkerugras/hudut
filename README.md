@@ -2,6 +2,8 @@
 
 Dünya haritasında oynanan çok oyunculu bir tarayıcı oyunu. Oyuncular bir ülke seçip o ülkede doğar ve sınırları takım arkadaşlarıyla birlikte iterek ülkelerini büyütür.
 
+Oyunun arayüzü, ülke isimleri ve silah isimleri İngilizcedir. Bu belge ve sunucunun terminal mesajları Türkçedir.
+
 ## Çalıştırma
 
 Gerekenler: [Node.js](https://nodejs.org) 20 veya üstü.
@@ -31,13 +33,13 @@ npm run dev
   - Kimse itmezse sınır yavaşça eski yerine döner.
 - **Silahlar:** Her 30 dakikada bir (geliştirme modunda 1 dakikada) oyundaki herkese rastgele bir silah verilir. Silahlar sınırı itme **hızını** artırır (%30 ile %100 arası), ama tek kişinin sınırı geçememe kuralını değiştirmez. Silahla karşı ülkenin oyuncularını vurabilirsin. Vurulan oyuncu 5 saniye sonra kendi ülkesinde yeniden doğar.
 
-| Silah | Hasar | Menzil | İtme hızı |
+| Silah (oyunda) | Hasar | Menzil | İtme hızı |
 |---|---|---|---|
-| Tabanca | 20 | 11 | +%30 |
-| Piyade tüfeği | 11 (seri) | 13 | +%50 |
-| Pompalı | 6 × 10 | 6,5 | +%70 |
-| Keskin nişancı | 75 | 26 | +%40 |
-| Roketatar | 60 (alan) | 18 | +%100 |
+| Pistol (tabanca) | 20 | 11 | +%30 |
+| Rifle (piyade tüfeği) | 11 (seri) | 13 | +%50 |
+| Shotgun (pompalı) | 6 × 10 | 6,5 | +%70 |
+| Sniper rifle (keskin nişancı) | 75 | 26 | +%40 |
+| Rocket launcher (roketatar) | 60 (alan) | 18 | +%100 |
 
 Kontroller: `W A S D` veya ok tuşları ile yürü, fare ile nişan al, sol tık ile ateş et, fare tekerleği ile yakınlaş/uzaklaş.
 

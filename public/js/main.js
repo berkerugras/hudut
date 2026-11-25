@@ -7,7 +7,8 @@ import { createGame } from './game.js';
 
 const $ = (id) => document.getElementById(id);
 const NAME_RE = /^[\p{L}\p{N}_.-]{3,16}$/u;
-const fmt = (n) => Number(n).toLocaleString('tr-TR');
+const fmt = (n) => Number(n).toLocaleString('en-US');
+const plural = (n, one, many) => `${fmt(n)} ${n === 1 ? one : many}`;
 const store = {
   get(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch { return d; } },
   set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* private mode */ } },
@@ -38,7 +39,8 @@ const socket = io();
 // ---------------- data ----------------
 function intervalText(ms) {
   const min = Math.max(1, Math.round(ms / 60000));
-  return min >= 60 && min % 60 === 0 ? `${min / 60} saatte` : `${min} dakikada`;
+  if (min >= 60 && min % 60 === 0) return min === 60 ? 'hour' : `${min / 60} hours`;
+  return min === 1 ? 'minute' : `${min} minutes`;
 }
 async function refreshWorld() {
   try {
@@ -50,14 +52,14 @@ async function refreshWorld() {
     painter.setGrid(state.grid);
     state.weaponIntervalMs = data.weaponIntervalMs;
     $('onlineText').textContent = data.players
-      ? `Şu an sahada ${fmt(data.players)} oyuncu var`
-      : 'Sahada henüz kimse yok. İlk sen gir.';
+      ? `${plural(data.players, 'player', 'players')} in the game right now`
+      : 'Nobody is playing yet. Be the first.';
     $('ruleInterval').textContent = intervalText(data.weaponIntervalMs);
     drawBackground();
     updateQuick();
     if (state.screen === 'country') { renderList(); drawPickMap(); updatePickInfo(); }
   } catch {
-    $('onlineText').textContent = 'Sunucuya ulaşılamadı. Sunucunun çalıştığından emin ol.';
+    $('onlineText').textContent = "Can't reach the server. Make sure it is running.";
   }
 }
 function applyCountries(list) {
@@ -104,7 +106,7 @@ function updateQuick() {
   if (profile.name && c && c.cells > 0) {
     const b1 = document.createElement('b'); b1.textContent = profile.name;
     const b2 = document.createElement('b'); b2.textContent = c.name;
-    btn.replaceChildren('Hızlı başla: ', b1, ' olarak ', b2, ' için savaş');
+    btn.replaceChildren('Quick start: fight for ', b2, ' as ', b1);
     btn.hidden = false;
   } else {
     btn.hidden = true;
@@ -115,7 +117,7 @@ $('loginForm').addEventListener('submit', (e) => {
   e.preventDefault();
   const name = $('nameInput').value.trim();
   if (!NAME_RE.test(name)) {
-    loginError('Kullanıcı adı 3-16 karakter olmalı; harf, rakam, _ . - kullanabilirsin.');
+    loginError('Usernames are 3–16 characters: letters, numbers, _ . -');
     return;
   }
   loginError('');
@@ -127,8 +129,8 @@ $('quickBtn').addEventListener('click', () => join(profile.country));
 
 // ---- step 2: character ----
 let preview = null;
-const SWATCH_LABEL = { skin: 'Ten rengi', shirt: 'Üst rengi', pants: 'Alt rengi' };
-const CHIP_LABEL = { head: ['Yuvarlak', 'Köşeli'], hat: ['Yok', 'Kep', 'Kask', 'Bere'] };
+const SWATCH_LABEL = { skin: 'Skin tone', shirt: 'Top color', pants: 'Bottom color' };
+const CHIP_LABEL = { head: ['Round', 'Square'], hat: ['None', 'Cap', 'Helmet', 'Beanie'] };
 function openChar() {
   if (!preview) preview = createPreview($('charCanvas'));
   preview.start();
@@ -216,7 +218,7 @@ pickMap.addEventListener('mousemove', (e) => {
   if (!o) { tip.hidden = true; return; }
   const c = state.byId.get(o);
   const b = document.createElement('b'); b.textContent = c.name;
-  tip.replaceChildren(b, ` · ${fmt(c.cells)} hücre · ${c.online ? `${c.online} oyuncu` : 'oyuncu yok'}`);
+  tip.replaceChildren(b, ` · ${plural(c.cells, 'cell', 'cells')} · ${c.online ? `${fmt(c.online)} playing` : 'nobody playing'}`);
   tip.hidden = false;
   const wr = $('mapWrap').getBoundingClientRect();
   const x = Math.min(e.clientX - wr.left + 14, wr.width - tip.offsetWidth - 8);
@@ -229,10 +231,12 @@ $('countrySearch').addEventListener('input', renderList);
 
 let listKey = '';
 function renderList() {
-  const q = $('countrySearch').value.trim().toLocaleLowerCase('tr');
+  // Accent-insensitive search, so "turkiye" finds "Türkiye" and "cote" finds "Côte d’Ivoire".
+  const fold = (s) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+  const q = fold($('countrySearch').value.trim());
   const list = state.countries
-    .filter((c) => c.cells > 0 && (!q || c.name.toLocaleLowerCase('tr').includes(q)))
-    .sort((a, b) => b.online - a.online || a.name.localeCompare(b.name, 'tr'));
+    .filter((c) => c.cells > 0 && (!q || fold(c.name).includes(q)))
+    .sort((a, b) => b.online - a.online || a.name.localeCompare(b.name, 'en'));
   // Rebuild only when something visible changed, so rows don't vanish under the pointer.
   const key = list.map((c) => `${c.id}:${c.online}:${c.cells}`).join(',');
   if (key === listKey && $('countryList').children.length) return;
@@ -246,7 +250,7 @@ function renderList() {
     const nm = document.createElement('span'); nm.className = 'nm'; nm.textContent = c.name;
     const meta = document.createElement('span');
     meta.className = 'meta' + (c.online ? ' live' : '');
-    meta.textContent = c.online ? `${c.online} oyuncu` : `${fmt(c.cells)} hücre`;
+    meta.textContent = c.online ? `${fmt(c.online)} playing` : plural(c.cells, 'cell', 'cells');
     li.append(sw, nm, meta);
     li.addEventListener('click', () => select(c.id));
     return li;
@@ -263,15 +267,15 @@ function updatePickInfo() {
   const c = state.byId.get(state.selected);
   const btn = $('joinBtn');
   if (!c || c.cells <= 0) {
-    $('pickInfo').textContent = 'Haritadan ya da listeden bir ülke seç.';
-    btn.textContent = 'Ülke seç';
+    $('pickInfo').textContent = 'Pick a country on the map or in the list.';
+    btn.textContent = 'Choose a country';
     btn.disabled = true;
     return;
   }
   const b = document.createElement('b'); b.textContent = c.name;
   $('pickInfo').replaceChildren(b, document.createElement('br'),
-    `${fmt(c.cells)} hücre · ${c.online ? `${c.online} oyuncu sahada` : 'şu an kimse yok'}`);
-  btn.textContent = `${c.name} için savaş`;
+    `${plural(c.cells, 'cell', 'cells')} · ${c.online ? `${fmt(c.online)} playing now` : 'nobody here yet'}`);
+  btn.textContent = `Fight for ${c.name}`;
   btn.disabled = state.joining;
 }
 function joinError(msg) {
@@ -292,8 +296,8 @@ function join(country) {
     state.joining = false;
     $('quickBtn').disabled = false;
     updatePickInfo();
-    if (err || !res) return failJoin('Sunucu yanıt vermedi. Bağlantını kontrol edip tekrar dene.');
-    if (res.error) return failJoin(res.error);
+    if (err || !res) return failJoin("The server didn't answer. Check your connection and try again.");
+    if (res.error) return failJoin(res.error, res.code);
     profile.country = country;
     saveProfile();
     applyCountries(res.countries);
@@ -301,8 +305,8 @@ function join(country) {
     state.game = createGame({ socket, init: res, countries: res.countries, onExit: exitGame });
   });
 }
-function failJoin(msg) {
-  if (/kullanıcı adı/i.test(msg)) { show('login'); loginError(msg); return; }
+function failJoin(msg, code) {
+  if (code === 'name') { show('login'); loginError(msg); return; }
   show('country');
   joinError(msg);
 }
@@ -311,7 +315,7 @@ function exitGame(reason) {
   socket.emit('leave');
   show('country');
   refreshWorld();
-  if (reason === 'eliminated') joinError('Ülkenin hiç toprağı kalmadı. Yeni bir ülke seç.');
+  if (reason === 'eliminated') joinError('Your country has no land left. Pick a new one.');
 }
 
 socket.on('disconnect', () => { if (state.game) $('netBox').hidden = false; });
@@ -325,7 +329,7 @@ socket.on('connect', () => {
   }
 });
 socket.on('connect_error', () => {
-  if (!state.game) $('onlineText').textContent = 'Sunucuya bağlanılamıyor. Yeniden deneniyor…';
+  if (!state.game) $('onlineText').textContent = "Can't connect to the server. Retrying…";
 });
 
 window.addEventListener('resize', () => { if (state.screen !== 'game') drawBackground(); });

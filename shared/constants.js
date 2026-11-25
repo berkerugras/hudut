@@ -27,11 +27,11 @@ export const SIDE_FORCE = 0.5;
 // ---- Weapons ----
 // push: multiplier on how fast the holder moves a border (never on how far one player can push it)
 export const WEAPONS = {
-  tabanca: { name: 'Tabanca', damage: 20, cooldown: 420, speed: 28, range: 11, pellets: 1, spread: 0.03, push: 1.3, splash: 0, len: 0.22 },
-  tufek: { name: 'Piyade tüfeği', damage: 11, cooldown: 130, speed: 34, range: 13, pellets: 1, spread: 0.06, push: 1.5, splash: 0, len: 0.42 },
-  pompali: { name: 'Pompalı', damage: 10, cooldown: 900, speed: 26, range: 6.5, pellets: 6, spread: 0.3, push: 1.7, splash: 0, len: 0.38 },
-  keskin: { name: 'Keskin nişancı', damage: 75, cooldown: 1600, speed: 60, range: 26, pellets: 1, spread: 0, push: 1.4, splash: 0, len: 0.55 },
-  roket: { name: 'Roketatar', damage: 60, cooldown: 2200, speed: 16, range: 18, pellets: 1, spread: 0, push: 2.0, splash: 2.2, len: 0.5 },
+  tabanca: { name: 'Pistol', damage: 20, cooldown: 420, speed: 28, range: 11, pellets: 1, spread: 0.03, push: 1.3, splash: 0, len: 0.22 },
+  tufek: { name: 'Rifle', damage: 11, cooldown: 130, speed: 34, range: 13, pellets: 1, spread: 0.06, push: 1.5, splash: 0, len: 0.42 },
+  pompali: { name: 'Shotgun', damage: 10, cooldown: 900, speed: 26, range: 6.5, pellets: 6, spread: 0.3, push: 1.7, splash: 0, len: 0.38 },
+  keskin: { name: 'Sniper rifle', damage: 75, cooldown: 1600, speed: 60, range: 26, pellets: 1, spread: 0, push: 1.4, splash: 0, len: 0.55 },
+  roket: { name: 'Rocket launcher', damage: 60, cooldown: 2200, speed: 16, range: 18, pellets: 1, spread: 0, push: 2.0, splash: 2.2, len: 0.5 },
 };
 export const WEAPON_IDS = Object.keys(WEAPONS);
 

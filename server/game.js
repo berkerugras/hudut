@@ -46,12 +46,13 @@ export class Game {
 
   // ---------- join / leave ----------
   join({ name, country, look }) {
+    // `code` tells the client which screen should show the error.
     name = String(name || '').trim();
-    if (!NAME_RE.test(name)) return { error: 'Kullanıcı adı 3-16 karakter olmalı; harf, rakam, _ . - kullanabilirsin.' };
-    if (this.byName.has(name.toLocaleLowerCase('tr'))) return { error: 'Bu kullanıcı adı şu an oyunda. Başka bir ad seç.' };
+    if (!NAME_RE.test(name)) return { error: 'Usernames are 3–16 characters: letters, numbers, _ . -', code: 'name' };
+    if (this.byName.has(name.toLowerCase())) return { error: 'That username is in the game right now. Pick another one.', code: 'name' };
     country = Number(country);
-    if (!this.countries.has(country)) return { error: 'Böyle bir ülke yok.' };
-    if (!this.cellCount.get(country)) return { error: 'Bu ülkenin hiç toprağı kalmadı. Başka bir ülke seç.' };
+    if (!this.countries.has(country)) return { error: "That country doesn't exist.", code: 'country' };
+    if (!this.cellCount.get(country)) return { error: 'That country has no land left. Pick another one.', code: 'country' };
     const p = {
       id: this.nextId++, name, country, look,
       x: 0, y: 0, aim: 0, hp: MAX_HP, alive: true, respawnAt: 0,
@@ -60,7 +61,7 @@ export class Game {
     };
     this.placeAtSpawn(p);
     this.players.set(p.id, p);
-    this.byName.set(name.toLocaleLowerCase('tr'), p.id);
+    this.byName.set(name.toLowerCase(), p.id);
     this.emit('playerJoined', this.publicPlayer(p));
     return { player: p };
   }
@@ -68,7 +69,7 @@ export class Game {
     const p = this.players.get(id);
     if (!p) return;
     this.players.delete(id);
-    this.byName.delete(p.name.toLocaleLowerCase('tr'));
+    this.byName.delete(p.name.toLowerCase());
     this.emit('playerLeft', id);
   }
   setInput(id, input) {

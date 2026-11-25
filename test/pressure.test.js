@@ -7,7 +7,7 @@ import { Game } from '../server/game.js';
 import { TICK_HZ, cellOffset, cellXY, isLand } from '../shared/constants.js';
 
 const base = loadBaseMap();
-const TR = base.countries.find((c) => c.name === 'Türkiye').id;
+const TR = base.countries.find((c) => c.iso === '792').id; // Türkiye
 
 function newGame() {
   return new Game({ grid: new Uint8Array(base.grid), countries: base.countries, weaponIntervalMs: 1e12, emit: () => {} });

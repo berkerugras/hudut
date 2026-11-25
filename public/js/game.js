@@ -9,7 +9,8 @@ import { buildCharacter } from './character.js';
 import { MapPainter, hexRgb } from './mapview.js';
 
 const $ = (id) => document.getElementById(id);
-const fmt = (n) => Number(n).toLocaleString('tr-TR');
+const fmt = (n) => Number(n).toLocaleString('en-US');
+const pushBonus = (w) => `${Math.round((w.push - 1) * 100)}%`;
 const vec3 = (hex) => { const [r, g, b] = hexRgb(hex); return new THREE.Vector3(r / 255, g / 255, b / 255); };
 const BULLET_COLOR = { tabanca: '#ffd27a', tufek: '#fff0b8', pompali: '#ffb36b', keskin: '#bfeaff', roket: '#ff7a4d' };
 
@@ -345,7 +346,7 @@ export function createGame({ socket, init, countries, onExit }) {
     },
     playerJoined(info) {
       addPlayer(info);
-      feed([[info.name, info.country], ` ${countryById.get(info.country)?.name || ''} için sahaya girdi`]);
+      feed([[info.name, info.country], ` joined for ${countryById.get(info.country)?.name || 'their country'}`]);
     },
     playerLeft(id) { removePlayer(id); },
     weaponDrop({ given, nextDropAt: next }) {
@@ -357,7 +358,7 @@ export function createGame({ socket, init, countries, onExit }) {
         p.ch.setWeapon(w);
         if (id === myId) {
           const W = WEAPONS[w];
-          toast(`Yeni silahın: ${W.name}. Sınırı %${Math.round((W.push - 1) * 100)} daha hızlı itersin.`);
+          toast(`New weapon: ${W.name}. You push borders ${pushBonus(W)} faster.`);
         }
       }
       updateWeaponHud();
@@ -370,14 +371,16 @@ export function createGame({ socket, init, countries, onExit }) {
       v.info.deaths++;
       feed([
         k ? [k.info.name, k.info.country] : ['?', 0],
-        ' vurdu ',
+        ' shot ',
         [v.info.name, v.info.country],
         { w: WEAPONS[weapon]?.name || '' },
       ]);
       if (victim === myId) {
         me.alive = false;
         deathUntil = respawnAt;
-        $('deathText').textContent = k ? `${k.info.name} seni ${WEAPONS[weapon]?.name.toLocaleLowerCase('tr') || 'silah'} ile vurdu.` : 'Vuruldun.';
+        $('deathText').textContent = k
+          ? `${k.info.name} shot you with a ${(WEAPONS[weapon]?.name || 'weapon').toLowerCase()}.`
+          : 'You were shot.';
         $('deathBox').hidden = false;
       }
     },
@@ -423,14 +426,12 @@ export function createGame({ socket, init, countries, onExit }) {
   }
   function updateWeaponHud() {
     const w = WEAPONS[players.get(myId)?.info.weapon];
-    $('hudWeapon').textContent = w ? w.name : 'Silah yok';
-    $('hudWeaponSub').textContent = w
-      ? `Sınırı %${Math.round((w.push - 1) * 100)} daha hızlı itersin`
-      : 'İlk dağıtımı bekle';
+    $('hudWeapon').textContent = w ? w.name : 'No weapon';
+    $('hudWeaponSub').textContent = w ? `Pushes borders ${pushBonus(w)} faster` : 'Wait for the next drop';
   }
   updateWeaponHud();
   if (!players.get(myId)?.info.weapon) {
-    toast(`${myCountry?.name || 'Ülken'} için sahadasın. Sınıra yürü ve yüklen.`);
+    toast(`You're fighting for ${myCountry?.name || 'your country'}. Walk to the border and push.`);
   }
 
   let lastPush = 0;
@@ -460,7 +461,7 @@ export function createGame({ socket, init, countries, onExit }) {
     box.hidden = false;
     const st = pressure.get(me.pushCell);
     const pct = st && st.attacker === me.country ? st.p : 0;
-    $('pushPct').textContent = `%${Math.round(pct * 100)}`;
+    $('pushPct').textContent = `${Math.round(pct * 100)}%`;
     $('pushBar').style.width = `${pct * 100}%`;
     let mates = 0;
     let foesNear = 0;
@@ -472,11 +473,11 @@ export function createGame({ socket, init, countries, onExit }) {
     }
     const sameCell = me.pushCell === lastPushCell;
     let hint;
-    if (st && st.attacker !== me.country) hint = 'Bu hücreyi başka bir ülke de itiyor.';
-    else if (foesNear > 0 && sameCell && pct + 0.005 < lastPush) hint = 'Karşı taraf savunuyor. Daha fazla kişiyle yüklen.';
-    else if (mates > 0) hint = `Seninle birlikte ${mates} kişi itiyor.`;
-    else if (pct >= 0.45) hint = 'Tek başına en fazla %50 itebilirsin. Geçmek için bir takım arkadaşın aynı noktaya yüklenmeli.';
-    else hint = 'Yüklenmeye devam et.';
+    if (st && st.attacker !== me.country) hint = 'Another country is pushing this cell too.';
+    else if (foesNear > 0 && sameCell && pct + 0.005 < lastPush) hint = "They're defending. Bring more people.";
+    else if (mates > 0) hint = `${mates} ${mates === 1 ? 'teammate is' : 'teammates are'} pushing with you.`;
+    else if (pct >= 0.45) hint = 'Alone you can push a border 50% at most. A teammate has to push the same spot to break through.';
+    else hint = 'Keep pushing.';
     $('pushHint').textContent = hint;
     lastPush = pct;
     lastPushCell = me.pushCell;
