@@ -80,9 +80,26 @@ ngrok http 3000
 
 ngrok'un verdiği `https://....ngrok-free.app` linkini arkadaşlarınla paylaş. Bilgisayar uyursa ya da bu iki komuttan biri kapanırsa oyun kapanır. Ücretsiz ngrok'ta link her başlatmada değişir. Sabit bir link için ngrok panelinden ücretsiz bir alan adı alıp `ngrok http --url=<alan-adın> 3000` ile başlatabilirsin. Ziyaretçiler ilk girişte ngrok'un bir uyarı sayfasını görür ve "Visit Site" ile geçer.
 
-### Kalıcı yol: barındırma servisi
+### Kalıcı yol: Render (ücretsiz)
 
-Arkadaşlarının farklı ağlardan katılması için sunucuyu WebSocket destekleyen bir Node.js barındırma servisine koyman gerekir (örneğin Render, Railway, Fly.io). Kurulum komutu `npm install`, başlatma komutu `npm start`. Ücretsiz planların çoğunda disk kalıcı değildir; sunucu yeniden kurulunca sınırlar gerçek dünya haline döner.
+Proje Render'a hazır: [render.yaml](render.yaml) dosyası sunucunun nasıl kurulacağını Render'a söyler.
+
+1. **GitHub'da boş bir depo aç:** github.com/new → Repository name: `hudut` → Public ya da Private → README, .gitignore, license ekleme seçeneklerini **boş bırak** → Create repository.
+2. **Projeyi yükle** (bu klasörde, kullanıcı adını yazarak):
+   ```
+   git remote add origin https://github.com/<kullanıcı-adın>/hudut.git
+   git push -u origin main
+   ```
+   İlk seferde GitHub girişi için bir tarayıcı penceresi açılabilir.
+3. **Render'a bağla:** render.com → GitHub ile giriş yap → üstteki **New** → **Blueprint** → GitHub hesabını bağla ve `hudut` deposunu seç → **Apply**.
+4. Birkaç dakikalık kurulumdan sonra Render `https://hudut-....onrender.com` gibi bir adres verir. Bu linki paylaş.
+5. **Güncelleme:** Koddaki her değişiklikten sonra `git push` yapman yeterli; Render kendisi yeniden kurar.
+
+Ücretsiz planın sınırları:
+
+- 15 dakika kimse oynamazsa sunucu uyur. Sonraki ilk giriş yaklaşık 1 dakika sürer.
+- Disk kalıcı değildir: sunucu her uyuyup uyandığında ya da yeniden kurulduğunda **sınırlar gerçek dünya haline döner**.
+- Makine küçüktür (512 MB bellek, 0,1 işlemci); arkadaş grubu için yeterlidir.
 
 ## Klasörler
 
