@@ -11,6 +11,16 @@ import { MapPainter, hexRgb } from './mapview.js';
 const $ = (id) => document.getElementById(id);
 const fmt = (n) => Number(n).toLocaleString('en-US');
 const pushBonus = (w) => `${Math.round((w.push - 1) * 100)}%`;
+// Other players are drawn this far in the past, between two server snapshots, so they move
+// smoothly even when packets arrive unevenly.
+const INTERP_MS = 130;
+const POSE_HOLD_S = 0.15;
+function lerpAngle(a, b, f) {
+  let d = (b - a) % (Math.PI * 2);
+  if (d > Math.PI) d -= Math.PI * 2;
+  if (d < -Math.PI) d += Math.PI * 2;
+  return a + d * f;
+}
 const vec3 = (hex) => { const [r, g, b] = hexRgb(hex); return new THREE.Vector3(r / 255, g / 255, b / 255); };
 const BULLET_COLOR = { tabanca: '#ffd27a', tufek: '#fff0b8', pompali: '#ffb36b', keskin: '#bfeaff', roket: '#ff7a4d' };
 
@@ -158,7 +168,8 @@ export function createGame({ socket, init, countries, onExit }) {
   const palTex = dataTex(palData, 256, 1, THREE.RGBAFormat);
   const pressData = new Uint8Array(GRID_W * GRID_H * 2);
   const pressTex = dataTex(pressData, GRID_W, GRID_H, THREE.RGFormat);
-  const me = { x: init.x, y: init.y, alive: true, pushCell: -1, country: 0 };
+  // tp: how many times the server has moved us itself; when it changes we jump to its position.
+  const me = { x: init.x, y: init.y, alive: true, pushCell: -1, country: 0, tp: Number.isInteger(init.tp) ? init.tp : -1 };
   const mapMat = new THREE.ShaderMaterial({
     vertexShader: VERT,
     fragmentShader: FRAG,
@@ -207,7 +218,8 @@ export function createGame({ socket, init, countries, onExit }) {
     ch.root.add(label);
     players.set(info.id, {
       info, ch, label, el, hpi,
-      x: info.id === myId ? init.x : 0, y: info.id === myId ? init.y : 0, sx: 0, sy: 0,
+      x: info.id === myId ? init.x : 0, y: info.id === myId ? init.y : 0,
+      buf: [], tp: -1,
       aim: 0, hp: MAX_HP, alive: true, pushing: false, moving: false, seen: info.id === myId,
     });
   }
@@ -267,6 +279,7 @@ export function createGame({ socket, init, countries, onExit }) {
   const MOVE_KEYS = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight']);
   on(window, 'keydown', (e) => {
     if (e.target && e.target.tagName === 'INPUT') return;
+    if (e.code === 'Enter' || e.code === 'NumpadEnter') { e.preventDefault(); openChat(); return; }
     if (MOVE_KEYS.has(e.code)) { keys.add(e.code); e.preventDefault(); }
   });
   on(window, 'keyup', (e) => keys.delete(e.code));
@@ -275,7 +288,10 @@ export function createGame({ socket, init, countries, onExit }) {
     ndc.x = (e.clientX / window.innerWidth) * 2 - 1;
     ndc.y = -(e.clientY / window.innerHeight) * 2 + 1;
   });
-  on(canvas, 'pointerdown', (e) => { if (e.button === 0) firing = true; });
+  on(canvas, 'pointerdown', (e) => {
+    if (chatOpen) closeChat();
+    if (e.button === 0) firing = true;
+  });
   on(window, 'pointerup', () => { firing = false; });
   on(canvas, 'contextmenu', (e) => e.preventDefault());
   on(canvas, 'wheel', (e) => {
@@ -294,7 +310,8 @@ export function createGame({ socket, init, countries, onExit }) {
 
   // ---------- network ----------
   const pressure = new Map(); // cell -> { attacker, p }
-  let minimapDirty = true;
+  const miniChanged = []; // cells that changed owner since the minimap was last painted
+  let serverOffset = null; // server clock minus ours, smoothed
   function snapMe(x, y) {
     camX += wrapDelta(x - me.x);
     me.x = x;
@@ -302,28 +319,35 @@ export function createGame({ socket, init, countries, onExit }) {
   }
   const handlers = {
     snap(s) {
-      const [mdx, mdy] = moveDir();
-      for (const [id, x, y, a, hp, flags] of s.p) {
+      // Track the server clock. Late packets make the sample smaller, so follow increases fast
+      // and decreases slowly.
+      const sample = s.t - Date.now();
+      if (serverOffset === null) serverOffset = sample;
+      else serverOffset += (sample - serverOffset) * (sample > serverOffset ? 0.3 : 0.02);
+
+      for (const [id, x, y, a, hp, flags, tp] of s.p) {
         const p = players.get(id);
         if (!p) continue;
         const alive = (flags & 1) === 1;
         if (id === myId) {
-          if (alive && !me.alive) snapMe(x, y);
-          else if (alive) {
-            const ex = wrapDelta(x - me.x);
-            const ey = y - me.y;
-            const err = Math.hypot(ex, ey);
-            const standingWrong = grid[cellAt(me.x, me.y)] !== me.country;
-            if (err > 1.5 || standingWrong) snapMe(x, y);
-            else if (!mdx && !mdy && err > 0.02) snapMe(me.x + ex * 0.35, me.y + ey * 0.35);
-          }
+          // We walk on our own; the server only moves us when it has to (spawn, respawn,
+          // losing the ground we stand on, or a refused move). Anything else is normal lag.
+          const standingWrong = alive && grid[cellAt(me.x, me.y)] !== me.country;
+          if (tp !== me.tp || standingWrong || (alive && !me.alive)) snapMe(x, y);
+          me.tp = tp;
           me.alive = alive;
           p.hp = hp;
           p.alive = alive;
           continue;
         }
-        if (!p.seen || (alive && !p.alive)) { p.x = x; p.y = y; p.seen = true; }
-        p.sx = x; p.sy = y; p.aim = a; p.hp = hp; p.alive = alive;
+        const jumped = !p.seen || tp !== p.tp || (alive && !p.alive);
+        if (jumped) { p.buf.length = 0; p.x = x; p.y = y; p.aim = a; }
+        p.buf.push({ t: s.t, x, y, a });
+        while (p.buf.length > 2 && s.t - p.buf[1].t > 1000) p.buf.shift();
+        p.seen = true;
+        p.tp = tp;
+        p.hp = hp;
+        p.alive = alive;
         p.pushing = (flags & 2) === 2;
         p.moving = (flags & 4) === 4;
       }
@@ -337,9 +361,8 @@ export function createGame({ socket, init, countries, onExit }) {
       }
       if (changed) pressTex.needsUpdate = true;
       if (s.f.length) {
-        for (const [c, o] of s.f) { counts[grid[c]]--; grid[c] = o; counts[o]++; }
+        for (const [c, o] of s.f) { counts[grid[c]]--; grid[c] = o; counts[o]++; miniChanged.push(c); }
         ownerTex.needsUpdate = true;
-        minimapDirty = true;
       }
       for (const shot of s.s) spawnBullet(shot);
       for (const imp of s.i) impact(imp);
@@ -385,6 +408,8 @@ export function createGame({ socket, init, countries, onExit }) {
       }
     },
     eliminated({ id }) { if (id === myId) onExit('eliminated'); },
+    chat(m) { addChatLine(m); },
+    chatRefused({ reason }) { addChatLine({ system: true, text: reason }); },
   };
   for (const [ev, fn] of Object.entries(handlers)) socket.on(ev, fn);
 
@@ -400,7 +425,7 @@ export function createGame({ socket, init, countries, onExit }) {
     el.textContent = text;
     el.hidden = false;
     clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => { el.hidden = true; }, 4000);
+    toastTimer = setTimeout(() => { el.hidden = true; }, 3000);
   }
   function feed(parts) {
     const li = document.createElement('li');
@@ -433,6 +458,77 @@ export function createGame({ socket, init, countries, onExit }) {
   if (!players.get(myId)?.info.weapon) {
     toast(`You're fighting for ${myCountry?.name || 'your country'}. Walk to the border and push.`);
   }
+
+  // ---------- chat ----------
+  // Enter opens the box, Enter sends, Esc closes, Tab switches between everyone and your team.
+  const chatBox = $('chat');
+  const chatForm = $('chatForm');
+  const chatInput = $('chatInput');
+  const chatScope = $('chatScope');
+  const chatLog = $('chatLog');
+  let chatOpen = false;
+  let chatTeam = false;
+  chatLog.replaceChildren();
+  function setChatScope(team) {
+    chatTeam = team;
+    chatScope.textContent = team ? 'Team' : 'All';
+    chatScope.classList.toggle('team', team);
+    chatScope.setAttribute('aria-pressed', String(team));
+    chatInput.placeholder = team ? `Message ${myCountry?.name || 'your team'}…` : 'Message everyone…';
+  }
+  function openChat() {
+    if (chatOpen) return;
+    chatOpen = true;
+    keys.clear();
+    firing = false;
+    chatBox.classList.add('open');
+    chatForm.hidden = false;
+    $('chatHint').hidden = true;
+    chatInput.focus({ preventScroll: true });
+    chatLog.scrollTop = chatLog.scrollHeight;
+  }
+  function closeChat() {
+    chatOpen = false;
+    chatBox.classList.remove('open');
+    chatForm.hidden = true;
+    $('chatHint').hidden = false;
+    chatInput.value = '';
+    chatInput.blur();
+  }
+  function addChatLine({ name, country, text, team, system }) {
+    const li = document.createElement('li');
+    if (system) {
+      li.className = 'system';
+      li.textContent = text;
+    } else {
+      if (team) {
+        const tag = document.createElement('span');
+        tag.className = 'tag';
+        tag.textContent = 'Team';
+        li.append(tag, ' ');
+      }
+      const b = document.createElement('b');
+      b.textContent = name;
+      b.style.color = countryById.get(country)?.color || 'inherit';
+      li.append(b, ': ', text);
+    }
+    chatLog.append(li);
+    while (chatLog.children.length > 60) chatLog.firstChild.remove();
+    chatLog.scrollTop = chatLog.scrollHeight;
+    setTimeout(() => li.classList.add('faded'), 15000);
+  }
+  setChatScope(false);
+  on(chatForm, 'submit', (e) => {
+    e.preventDefault();
+    const text = chatInput.value.trim();
+    if (text) socket.emit('chat', { text, team: chatTeam });
+    closeChat();
+  });
+  on(chatInput, 'keydown', (e) => {
+    if (e.key === 'Escape') { e.preventDefault(); closeChat(); }
+    else if (e.key === 'Tab') { e.preventDefault(); setChatScope(!chatTeam); }
+  });
+  on(chatScope, 'click', () => { setChatScope(!chatTeam); chatInput.focus({ preventScroll: true }); });
 
   let lastPush = 0;
   let lastPushCell = -1;
@@ -488,15 +584,15 @@ export function createGame({ socket, init, countries, onExit }) {
   const miniCtx = mini.getContext('2d');
   const painter = new MapPainter(countries);
   painter.setGrid(grid);
-  let miniSrc = null;
+  const miniSrc = painter.paint({ mine: me.country });
   let miniAt = 0;
   function drawMinimap(now) {
-    if (minimapDirty && now - miniAt > 1000) {
-      miniSrc = painter.paint({ mine: me.country });
-      minimapDirty = false;
+    // Repaint only the cells that changed hands (a full repaint walks 259,200 cells).
+    if (miniChanged.length && now - miniAt > 500) {
+      painter.update(miniChanged, { mine: me.country });
+      miniChanged.length = 0;
       miniAt = now;
     }
-    if (!miniSrc) return;
     const W = mini.width, H = mini.height;
     miniCtx.imageSmoothingEnabled = false;
     miniCtx.drawImage(miniSrc, 0, 0, W, H);
@@ -537,23 +633,45 @@ export function createGame({ socket, init, countries, onExit }) {
   let t = 0;
   let sendAcc = 0;
   let hudAcc = 0;
+  let pushHoldUntil = 0;
+  let moveAngle = 0;
+  let facing = 0;
+
+  // Position of another player at render time `rt`, between the two snapshots around it.
+  function sampleRemote(p, rt) {
+    const b = p.buf;
+    if (!b.length) return;
+    let i = 0;
+    while (i < b.length - 1 && b[i + 1].t <= rt) i++;
+    const A = b[i];
+    const B = b[i + 1];
+    if (!B || rt <= A.t) { p.x = A.x; p.y = A.y; p.aim = A.a; return; }
+    const f = (rt - A.t) / Math.max(1, B.t - A.t);
+    p.x = wrapX(A.x + wrapDelta(B.x - A.x) * f);
+    p.y = A.y + (B.y - A.y) * f;
+    p.aim = lerpAngle(A.a, B.a, f);
+  }
 
   function frame(now) {
     const dt = Math.min(0.05, (now - last) / 1000);
     last = now;
     t += dt;
     const [dx, dy] = moveDir();
+    if (dx || dy) moveAngle = Math.atan2(dy, dx);
 
-    // Own movement, predicted locally with the same rules the server uses.
+    // We move ourselves with the same rules the server checks against. "Pushing" is held for a
+    // moment so that sliding along a border doesn't flip the pose every frame.
     if (me.alive) {
       const r = stepMovement(grid, me.country, me.x, me.y, dx, dy, dt);
       camX += wrapDelta(r.x - me.x);
       me.x = r.x;
       me.y = r.y;
-      me.pushCell = r.pushCell;
+      if (r.pushCell >= 0) { me.pushCell = r.pushCell; pushHoldUntil = t + POSE_HOLD_S; }
+      else if (t > pushHoldUntil) me.pushCell = -1;
     } else {
       me.pushCell = -1;
     }
+    const pushing = me.pushCell >= 0;
 
     camera.position.set(camX, 0, me.y).addScaledVector(camOffset, zoom);
     camera.lookAt(camX, 0.6, me.y);
@@ -562,13 +680,22 @@ export function createGame({ socket, init, countries, onExit }) {
     if (ray.ray.intersectPlane(aimPlane, hit)) aim = Math.atan2(hit.z - me.y, hit.x - camX);
     const myP = players.get(myId);
     const armed = !!(myP && myP.info.weapon);
-    // While pushing (and not shooting) face the border instead of the mouse.
-    const facing = me.pushCell >= 0 && !(firing && armed) ? Math.atan2(dy, dx) : aim;
+    const shooting = firing && armed && me.alive;
+    // Face the border while pushing, otherwise the mouse; turn smoothly instead of snapping.
+    const wantFacing = pushing && !shooting ? moveAngle : aim;
+    facing = lerpAngle(facing, wantFacing, 1 - Math.exp(-16 * dt));
 
     sendAcc += dt;
     if (sendAcc >= 0.05) {
       sendAcc = 0;
-      socket.emit('input', { dx, dy, aim: facing, fire: firing && armed && me.alive });
+      socket.emit('input', {
+        dx, dy,
+        aim: shooting ? aim : facing,
+        fire: shooting,
+        x: Math.round(me.x * 1000) / 1000,
+        y: Math.round(me.y * 1000) / 1000,
+        tp: me.tp,
+      });
     }
 
     // Map tiles follow the camera so the world wraps east-west.
@@ -577,17 +704,16 @@ export function createGame({ socket, init, countries, onExit }) {
     mapMat.uniforms.uTime.value = t;
 
     // Characters
-    const k = 1 - Math.exp(-14 * dt);
+    const renderT = Date.now() + (serverOffset ?? 0) - INTERP_MS;
     for (const p of players.values()) {
       if (p.info.id === myId) {
         p.ch.root.visible = me.alive;
         p.ch.root.position.set(camX, 0, me.y);
         p.ch.root.rotation.y = -facing;
-        p.ch.animate(t, dt, { moving: !!(dx || dy) && me.pushCell < 0, pushing: me.pushCell >= 0 });
+        p.ch.animate(t, dt, { moving: !!(dx || dy) && !pushing, pushing });
       } else {
         if (!p.seen) continue;
-        p.x = wrapX(p.x + wrapDelta(p.sx - p.x) * k);
-        p.y += (p.sy - p.y) * k;
+        sampleRemote(p, renderT);
         p.ch.root.visible = p.alive;
         p.ch.root.position.set(rx(p.x), 0, p.y);
         p.ch.root.rotation.y = -p.aim;
@@ -631,6 +757,8 @@ export function createGame({ socket, init, countries, onExit }) {
     ac.abort();
     for (const [ev, fn] of Object.entries(handlers)) socket.off(ev, fn);
     clearTimeout(toastTimer);
+    closeChat();
+    chatLog.replaceChildren();
     for (const id of [...players.keys()]) removePlayer(id);
     for (const id of [...bullets.keys()]) removeBullet(id);
     for (const m of effects) { scene.remove(m); m.material.dispose(); }

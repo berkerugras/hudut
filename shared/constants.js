@@ -103,7 +103,12 @@ export function stepMovement(grid, country, x, y, dx, dy, dt) {
     if (own(c)) y = ty;
     else if (foreign(c) && Math.abs(uy) > pushWeight) { pushCell = c; pushWeight = Math.abs(uy); }
   }
-  if (!own(cellAt(x, y))) { x = ox; y = oy; }
+  // Moving diagonally into a corner: slide along whichever axis stays on own land instead of stopping dead.
+  if (!own(cellAt(x, y))) {
+    if (own(cellAt(x, oy))) y = oy;
+    else if (own(cellAt(ox, y))) x = ox;
+    else { x = ox; y = oy; }
+  }
   if (pushWeight < 0.4) pushCell = -1;
   return { x: wrapX(x), y, pushCell };
 }

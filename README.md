@@ -15,12 +15,6 @@ npm start
 
 Sonra tarayıcıda `http://localhost:3000` adresini aç. Aynı ağdaki arkadaşların `http://<bilgisayarının-IP-adresi>:3000` ile katılabilir.
 
-Test ederken silahların hemen gelmesi için geliştirme modunu kullan (silah her 1 dakikada bir gelir):
-
-```
-npm run dev
-```
-
 ## Oyun kuralları
 
 - **Giriş:** Sadece kullanıcı adı. Şifre yok. Oyundaki biri aynı adı kullanıyorsa başka bir ad seçersin.
@@ -31,7 +25,7 @@ npm run dev
   - Tek bir oyuncunun gücü hücreyi en fazla **%50** itebilir. Hücreyi geçmek için toplam net güç 2 olmalı, yani **aynı noktaya en az iki kişi** yüklenmeli.
   - Karşı ülkeden biri aynı sınırı geri iterse **aynı güçle** savunur: 2 saldıran ile 1 savunan arasında net güç 1 kalır ve sınır geçilemez.
   - Kimse itmezse sınır yavaşça eski yerine döner.
-- **Silahlar:** Her 30 dakikada bir (geliştirme modunda 1 dakikada) oyundaki herkese rastgele bir silah verilir. Silahlar sınırı itme **hızını** artırır (%30 ile %100 arası), ama tek kişinin sınırı geçememe kuralını değiştirmez. Silahla karşı ülkenin oyuncularını vurabilirsin. Vurulan oyuncu 5 saniye sonra kendi ülkesinde yeniden doğar.
+- **Silahlar:** Her 30 saniyede bir oyundaki herkese rastgele yeni bir silah verilir (öncekinden farklı). Silahlar sınırı itme **hızını** artırır (%30 ile %100 arası), ama tek kişinin sınırı geçememe kuralını değiştirmez. Silahla karşı ülkenin oyuncularını vurabilirsin. Vurulan oyuncu 5 saniye sonra kendi ülkesinde yeniden doğar.
 
 | Silah (oyunda) | Hasar | Menzil | İtme hızı |
 |---|---|---|---|
@@ -41,14 +35,21 @@ npm run dev
 | Sniper rifle (keskin nişancı) | 75 | 26 | +%40 |
 | Rocket launcher (roketatar) | 60 (alan) | 18 | +%100 |
 
-Kontroller: `W A S D` veya ok tuşları ile yürü, fare ile nişan al, sol tık ile ateş et, fare tekerleği ile yakınlaş/uzaklaş.
+- **Sohbet:** `Enter` sohbet kutusunu açar, mesajı yazıp `Enter` ile gönderirsin, `Esc` kapatır. `Tab` herkese (All) ve sadece kendi ülkene (Team) yazmak arasında geçiş yapar. Mesajlar en fazla 140 karakter; 5 saniyede en fazla 5 mesaj gönderilebilir.
+
+Kontroller: `W A S D` veya ok tuşları ile yürü, fare ile nişan al, sol tık ile ateş et, fare tekerleği ile yakınlaş/uzaklaş, `Enter` ile sohbet et.
+
+### Hareket nasıl çalışıyor
+
+Her oyuncu kendi karakterini kendi tarayıcısında yürütür ve konumunu sunucuya yollar; böylece yüksek ping'de bile yürüyüş akıcıdır. Sunucu her konumu denetler: yürüme hızıyla oraya varılabiliyor mu, yol boyunca hep kendi toprağında mı? Değilse konumu kabul etmez ve oyuncuyu geri çeker. Diğer oyuncular ekranda 130 ms geriden, iki sunucu görüntüsü arasında yumuşatılarak çizilir.
 
 ## Ayarlar
 
 | Ortam değişkeni | Varsayılan | Açıklama |
 |---|---|---|
 | `PORT` | `3000` | Sunucunun dinlediği port |
-| `WEAPON_INTERVAL_MIN` | `30` (`npm run dev` ile `1`) | Silah dağıtım aralığı (dakika) |
+| `WEAPON_INTERVAL_SEC` | `30` | Silah dağıtım aralığı (saniye) |
+| `MAX_PLAYERS` | `100` | Aynı anda en fazla kaç oyuncu |
 
 Sınır ayarları (itme hızı, tek kişi sınırı vb.) `shared/constants.js` dosyasındadır.
 
@@ -64,7 +65,7 @@ Sınır ayarları (itme hızı, tek kişi sınırı vb.) `shared/constants.js` d
 npm test
 ```
 
-Sınır kurallarını doğrular: tek oyuncu sınırı geçemez, iki oyuncu geçer, bir savunan bir saldıranı dengeler, silah sadece hızı artırır.
+Doğrulananlar: tek oyuncu sınırı geçemez, iki oyuncu geçer, bir savunan bir saldıranı dengeler, silah sadece hızı artırır; normal yürüyüş kabul edilir, ışınlanma ve düşman toprağına girme reddedilir; sohbet metni temizlenir.
 
 ## İnternete açmak
 

@@ -5,16 +5,15 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Server } from 'socket.io';
 import { loadBaseMap, DATA_DIR } from './mapdata.js';
-import { Game } from './game.js';
+import { Game, cleanChat } from './game.js';
 import { TICK_HZ, sanitizeLook } from '../shared/constants.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.join(here, '..');
 const PORT = Number(process.env.PORT) || 3000;
-const DEV = process.argv.includes('--dev');
-// Weapons arrive every 30 minutes; `npm run dev` uses 1 minute so you can test quickly.
-const intervalMin = Number(process.env.WEAPON_INTERVAL_MIN) || (DEV ? 1 : 30);
-const weaponIntervalMs = Math.round(intervalMin * 60 * 1000);
+// Every player gets a new random weapon this often.
+const intervalSec = Number(process.env.WEAPON_INTERVAL_SEC) || 30;
+const weaponIntervalMs = Math.round(intervalSec * 1000);
 
 // ---- territory: base map + saved borders ----
 const { grid: baseGrid, countries } = loadBaseMap();
@@ -31,7 +30,7 @@ try {
 // ---- web server ----
 const app = express();
 const server = http.createServer(app);
-// Clients only send tiny messages (join, input); refuse anything big.
+// Clients only send tiny messages (join, input, chat); refuse anything big.
 const io = new Server(server, { perMessageDeflate: { threshold: 1024 }, maxHttpBufferSize: 16 * 1024 });
 const MAX_PLAYERS = Number(process.env.MAX_PLAYERS) || 100;
 
@@ -62,13 +61,18 @@ app.get('/api/territory', (req, res) => {
 
 io.on('connection', (socket) => {
   let playerId = 0;
+  let teamRoom = '';
   let lastJoin = 0;
-  let lastInput = 0;
+  let inputWindow = 0;
+  let inputCount = 0;
+  let chatTimes = [];
   const leaveGame = () => {
     if (!playerId) return;
     game.leave(playerId);
     playerId = 0;
     socket.leave('game');
+    if (teamRoom) socket.leave(teamRoom);
+    teamRoom = '';
   };
 
   socket.on('join', (data, ack) => {
@@ -81,12 +85,15 @@ io.on('connection', (socket) => {
     const r = game.join({ name: data && data.name, country: data && data.country, look: sanitizeLook(data && data.look) });
     if (r.error) return ack({ error: r.error, code: r.code });
     playerId = r.player.id;
+    teamRoom = `country:${r.player.country}`;
     socket.join('game');
+    socket.join(teamRoom);
     ack({
       ok: true,
       you: playerId,
       x: r.player.x,
       y: r.player.y,
+      tp: r.player.tp,
       players: [...game.players.values()].map((p) => game.publicPlayer(p)),
       countries: game.countryList(),
       grid: Buffer.from(game.grid),
@@ -95,13 +102,32 @@ io.on('connection', (socket) => {
       weaponIntervalMs,
     });
   });
+
   socket.on('input', (input) => {
-    // The client sends 20 inputs a second; ignore anything much faster than that.
+    // The client sends 20 inputs a second. Allow bursts (networks deliver them bunched up)
+    // but cap the rate, and never drop the newest one just because it arrived close to the last.
     const now = Date.now();
-    if (!playerId || now - lastInput < 15) return;
-    lastInput = now;
+    if (now - inputWindow > 1000) { inputWindow = now; inputCount = 0; }
+    if (!playerId || ++inputCount > 60) return;
     game.setInput(playerId, input);
   });
+
+  socket.on('chat', (msg) => {
+    if (!playerId) return;
+    const now = Date.now();
+    // At most 5 messages per 5 seconds.
+    chatTimes = chatTimes.filter((t) => now - t < 5000);
+    if (chatTimes.length >= 5) return socket.emit('chatRefused', { reason: 'Slow down: wait a few seconds before sending more.' });
+    const text = cleanChat(msg && msg.text);
+    if (!text) return;
+    chatTimes.push(now);
+    const p = game.players.get(playerId);
+    if (!p) return;
+    const team = !!(msg && msg.team);
+    const payload = { id: p.id, name: p.name, country: p.country, text, team };
+    io.to(team ? teamRoom : 'game').emit('chat', payload);
+  });
+
   socket.on('leave', leaveGame);
   socket.on('disconnect', leaveGame);
 });
@@ -122,5 +148,5 @@ for (const sig of ['SIGINT', 'SIGTERM']) {
 }
 
 server.listen(PORT, () => {
-  console.log(`Hudut çalışıyor: http://localhost:${PORT}  (silah aralığı: ${intervalMin} dk${DEV ? ', geliştirme modu' : ''})`);
+  console.log(`Hudut çalışıyor: http://localhost:${PORT}  (silah aralığı: ${intervalSec} sn)`);
 });

@@ -1,12 +1,29 @@
-// Authoritative simulation: movement, border pressure, weapons, bullets.
+// Server side of the game: border pressure, weapons, bullets, and checking player movement.
+//
+// Movement: each client moves its own character (so walking is smooth whatever the ping) and sends
+// its position. The server accepts a position only if it is reachable at walking speed over the
+// player's own land; otherwise it keeps its own position and bumps `tp` ("teleport count"), which
+// tells that client to jump back. `tp` also goes up when the server moves a player itself
+// (spawn, respawn, losing the cell they stand on).
 import {
-  GRID_W, GRID_H, TICK_HZ, MAX_HP, RESPAWN_MS, HIT_RADIUS,
+  GRID_W, GRID_H, TICK_HZ, MAX_HP, RESPAWN_MS, HIT_RADIUS, PLAYER_SPEED,
   PUSH_BASE_RATE, SOLO_CAP, PRESSURE_DECAY, SIDE_FORCE,
   WEAPONS, WEAPON_IDS, stepMovement, cellAt, cellXY, cellOffset, wrapX, wrapDelta, isLand,
 } from '../shared/constants.js';
 
 const NAME_RE = /^[\p{L}\p{N}_.-]{3,16}$/u;
 const round2 = (v) => Math.round(v * 100) / 100;
+const MOVE_SLACK = 0.35; // cells of jitter allowed on top of walking speed
+const POSE_HOLD_MS = 150; // keep "pushing"/"moving" on briefly so animations don't flicker
+
+// Chat text: one line, no control characters, at most 140 characters.
+export function cleanChat(text) {
+  return String(text == null ? '' : text)
+    .replace(/[\u0000-\u001f\u007f]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 140);
+}
 
 export class Game {
   constructor({ grid, countries, weaponIntervalMs, emit }) {
@@ -57,7 +74,8 @@ export class Game {
       id: this.nextId++, name, country, look,
       x: 0, y: 0, aim: 0, hp: MAX_HP, alive: true, respawnAt: 0,
       weapon: null, lastShot: 0, kills: 0, deaths: 0,
-      input: { dx: 0, dy: 0, aim: 0, fire: false }, pushCell: -1, moving: false,
+      input: { dx: 0, dy: 0, aim: 0, fire: false }, pushCell: -1,
+      tp: 0, lastMoveAt: Date.now(), movedAt: 0, pushUntil: 0,
     };
     this.placeAtSpawn(p);
     this.players.set(p.id, p);
@@ -83,6 +101,44 @@ export class Game {
     const aim = Number(input.aim);
     if (Number.isFinite(aim)) p.input.aim = aim;
     p.input.fire = !!input.fire;
+    const x = Number(input.x);
+    const y = Number(input.y);
+    // A position sent before the client saw our last teleport is out of date: skip it quietly
+    // instead of refusing it (which would make the client jump a second time).
+    const stale = input.tp !== undefined && Number(input.tp) !== p.tp;
+    if (p.alive && !stale && Number.isFinite(x) && Number.isFinite(y)) this.acceptPosition(p, x, y);
+  }
+
+  // A client says "I am at (x, y)". Accept it only if walking there was possible.
+  acceptPosition(p, x, y) {
+    const now = Date.now();
+    x = wrapX(x);
+    const dx = wrapDelta(x - p.x);
+    const dy = y - p.y;
+    const dist = Math.hypot(dx, dy);
+    if (dist < 1e-4) return true;
+    const elapsed = Math.min(1, Math.max(0, now - p.lastMoveAt) / 1000);
+    const allowed = PLAYER_SPEED * elapsed * 1.3 + MOVE_SLACK;
+    let ok = y >= 0 && y < GRID_H && dist <= allowed;
+    // Every point along the way must be the player's own land.
+    const steps = Math.max(1, Math.ceil(dist / 0.4));
+    for (let i = 1; ok && i <= steps; i++) {
+      const c = cellAt(p.x + (dx * i) / steps, p.y + (dy * i) / steps);
+      if (c < 0 || this.grid[c] !== p.country) ok = false;
+    }
+    if (!ok) { p.tp++; return false; }
+    p.x = x;
+    p.y = y;
+    p.lastMoveAt = now;
+    p.movedAt = now;
+    return true;
+  }
+  // The server moves a player itself; the client must jump to the new spot.
+  teleport(p, x, y) {
+    p.x = x;
+    p.y = y;
+    p.tp++;
+    p.lastMoveAt = Date.now();
   }
 
   // ---------- spawning ----------
@@ -122,7 +178,7 @@ export class Game {
     if (c < 0) c = this.randomCellOf(p.country);
     if (c < 0) return false;
     const [cx, cy] = cellXY(c);
-    p.x = cx + 0.5; p.y = cy + 0.5;
+    this.teleport(p, cx + 0.5, cy + 0.5);
     p.hp = MAX_HP; p.alive = true; p.pushCell = -1;
     return true;
   }
@@ -301,7 +357,7 @@ export class Game {
     for (const p of this.players.values()) {
       if (p.country !== old || !p.alive || cellAt(p.x, p.y) !== c) continue;
       const back = this.nearestOwnCell(c, old);
-      if (back >= 0) { const [bx, by] = cellXY(back); p.x = bx + 0.5; p.y = by + 0.5; }
+      if (back >= 0) { const [bx, by] = cellXY(back); this.teleport(p, bx + 0.5, by + 0.5); }
       else this.placeAtSpawn(p);
     }
     if ((this.cellCount.get(old) || 0) <= 0) {
@@ -331,9 +387,11 @@ export class Game {
         if (now >= p.respawnAt) { if (!this.placeAtSpawn(p)) p.respawnAt = now + RESPAWN_MS; }
         continue;
       }
+      // Clients move themselves (see acceptPosition). Here we only work out whether the player is
+      // walking into a border, and hold that briefly so a jittery key or packet doesn't flicker it.
       const r = stepMovement(this.grid, p.country, p.x, p.y, p.input.dx, p.input.dy, dt);
-      p.moving = r.x !== p.x || r.y !== p.y;
-      p.x = r.x; p.y = r.y; p.pushCell = r.pushCell;
+      if (r.pushCell >= 0) { p.pushCell = r.pushCell; p.pushUntil = now + POSE_HOLD_MS; }
+      else if (now >= p.pushUntil) p.pushCell = -1;
       p.aim = p.input.aim;
       if (p.input.fire && p.weapon) this.tryFire(p, now);
     }
@@ -342,8 +400,9 @@ export class Game {
 
     const players = [];
     for (const p of this.players.values()) {
-      const flags = (p.alive ? 1 : 0) | (p.pushCell >= 0 ? 2 : 0) | (p.moving ? 4 : 0);
-      players.push([p.id, round2(p.x), round2(p.y), round2(p.aim), Math.max(0, Math.round(p.hp)), flags]);
+      const moving = now - p.movedAt < POSE_HOLD_MS;
+      const flags = (p.alive ? 1 : 0) | (p.pushCell >= 0 ? 2 : 0) | (moving ? 4 : 0);
+      players.push([p.id, round2(p.x), round2(p.y), round2(p.aim), Math.max(0, Math.round(p.hp)), flags, p.tp]);
     }
     const contested = [];
     for (const [c, st] of this.pressure) contested.push([c, st.attacker, Math.round(st.p * 255)]);

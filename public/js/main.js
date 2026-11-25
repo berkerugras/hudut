@@ -38,7 +38,9 @@ const socket = io();
 
 // ---------------- data ----------------
 function intervalText(ms) {
-  const min = Math.max(1, Math.round(ms / 60000));
+  const sec = Math.max(1, Math.round(ms / 1000));
+  if (sec < 60) return sec === 1 ? 'second' : `${sec} seconds`;
+  const min = Math.round(sec / 60);
   if (min >= 60 && min % 60 === 0) return min === 60 ? 'hour' : `${min / 60} hours`;
   return min === 1 ? 'minute' : `${min} minutes`;
 }

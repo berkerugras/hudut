@@ -12,5 +12,5 @@ services:
     envVars:
       - key: NODE_VERSION
         value: "22"
-      - key: WEAPON_INTERVAL_MIN
+      - key: WEAPON_INTERVAL_SEC
         value: "30"

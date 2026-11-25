@@ -3,7 +3,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { loadBaseMap } from '../server/mapdata.js';
-import { Game } from '../server/game.js';
+import { Game, cleanChat } from '../server/game.js';
 import { TICK_HZ, cellOffset, cellXY, isLand } from '../shared/constants.js';
 
 const base = loadBaseMap();
@@ -71,6 +71,48 @@ test('one defender cancels one attacker of two: the border holds', () => {
   assert.equal(g.grid[f.target], f.enemy);
   const st = g.pressure.get(f.target);
   assert.ok(!st || st.p <= 0.5 + 1e-9, `pressure ${st && st.p}`);
+});
+
+test('a short walk on own land is accepted as the client sent it', () => {
+  const g = newGame();
+  const f = findFront(g.grid);
+  const p = place(g, 'yuruyen', TR, f.from, 0);
+  const tp = p.tp;
+  p.lastMoveAt = Date.now() - 100; // 100 ms since the last accepted step
+  const [x, y] = cellXY(f.from);
+  g.setInput(p.id, { dx: -1, dy: 0, aim: 0, x: x + 0.1, y: y + 0.5 });
+  assert.ok(Math.abs(p.x - (x + 0.1)) < 1e-9, `x ${p.x}`);
+  assert.equal(p.tp, tp, 'no correction for a normal step');
+});
+
+test('a teleport is refused and the client is told to jump back', () => {
+  const g = newGame();
+  const f = findFront(g.grid);
+  const p = place(g, 'hileci', TR, f.from, 0);
+  p.lastMoveAt = Date.now();
+  const before = [p.x, p.y, p.tp];
+  g.setInput(p.id, { dx: 0, dy: 0, aim: 0, x: p.x - 20, y: p.y });
+  assert.deepEqual([p.x, p.y], before.slice(0, 2));
+  assert.equal(p.tp, before[2] + 1);
+});
+
+test('walking into enemy land is refused even when the distance is small', () => {
+  const g = newGame();
+  const f = findFront(g.grid);
+  const p = place(g, 'sinirda', TR, f.from, 0);
+  p.lastMoveAt = Date.now() - 500;
+  const [tx, ty] = cellXY(f.target);
+  const tp = p.tp;
+  g.setInput(p.id, { dx: 1, dy: 0, aim: 0, x: tx + 0.3, y: ty + 0.5 });
+  assert.equal(g.grid[cellXY(f.from)[1] * 720 + cellXY(f.from)[0]], TR);
+  assert.equal(p.tp, tp + 1);
+  assert.notEqual(Math.floor(p.x), tx);
+});
+
+test('chat text is one clean line of at most 140 characters', () => {
+  assert.equal(cleanChat('  hello\nworld\t!  '), 'hello world !');
+  assert.equal(cleanChat('a'.repeat(300)).length, 140);
+  assert.equal(cleanChat(null), '');
 });
 
 test('weapons make pushing faster, not stronger', () => {

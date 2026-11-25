@@ -44,6 +44,15 @@
 
     <ol id="feed" class="feed" aria-live="polite"></ol>
 
+    <div class="chat" id="chat">
+      <ol id="chatLog" class="chat-log" aria-live="polite" aria-label="Chat"></ol>
+      <form id="chatForm" class="chat-form" autocomplete="off" hidden>
+        <button type="button" id="chatScope" class="chat-scope" aria-pressed="false" title="Tab switches between everyone and your team">All</button>
+        <input id="chatInput" maxlength="140" spellcheck="false" aria-label="Chat message" placeholder="Message everyone…">
+      </form>
+      <p class="chat-hint" id="chatHint"><kbd>Enter</kbd> chat · <kbd>Tab</kbd> everyone / team</p>
+    </div>
+
     <div class="hud-bottom">
       <div class="panel minimap-wrap">
         <canvas id="minimap" width="360" height="180" aria-label="World map"></canvas>
@@ -59,7 +68,7 @@
       <div class="panel help">
         <div><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> walk, push into a border</div>
         <div><kbd>Mouse</kbd> aim · <kbd>Left click</kbd> shoot</div>
-        <div><kbd>Wheel</kbd> zoom in / out</div>
+        <div><kbd>Wheel</kbd> zoom · <kbd>Enter</kbd> chat</div>
         <button class="btn ghost small" id="btnChangeCountry" type="button">Change country</button>
       </div>
     </div>
@@ -84,7 +93,7 @@
       <ol class="rules">
         <li><span><b>Pick your country</b> and spawn on its land.</span></li>
         <li><span><b>Walk to the border and push.</b> On your own you can push it half a cell at most. When two players push the same spot, the border moves.</span></li>
-        <li><span><b>A random weapon every <span id="ruleInterval">30 minutes</span>.</b> Weapons push borders faster and let you shoot players across the line.</span></li>
+        <li><span><b>A random weapon every <span id="ruleInterval">30 seconds</span>.</b> Weapons push borders faster and let you shoot players across the line.</span></li>
       </ol>
       <form id="loginForm" class="stack" novalidate>
         <label for="nameInput">Username</label>
