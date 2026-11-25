@@ -1,0 +1,25 @@
+{
+  "name": "hudut",
+  "version": "0.1.0",
+  "description": "Dünya haritasında sınırları birlikte ittiğin çok oyunculu tarayıcı oyunu",
+  "private": true,
+  "type": "module",
+  "main": "server/index.js",
+  "scripts": {
+    "start": "node server/index.js",
+    "dev": "node server/index.js --dev",
+    "reset-map": "node server/reset-map.js",
+    "test": "node --test test/pressure.test.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "express": "^4.22.3",
+    "i18n-iso-countries": "^7.14.0",
+    "socket.io": "^4.8.4",
+    "three": "^0.187.0",
+    "topojson-client": "^3.1.0",
+    "world-atlas": "^2.0.2"
+  }
+}

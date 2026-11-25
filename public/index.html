@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Hudut</title>
+  <meta name="description" content="Dünya haritasında sınırları takım arkadaşlarınla birlikte ittiğin çok oyunculu tarayıcı oyunu.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=Saira+Condensed:wght@600;700;800&display=swap">
+  <link rel="stylesheet" href="/style.css">
+  <script type="importmap">
+    { "imports": { "three": "/vendor/three/build/three.module.js", "three/addons/": "/vendor/three/addons/" } }
+  </script>
+</head>
+<body>
+  <canvas id="bgMap" aria-hidden="true"></canvas>
+
+  <!-- 3D game -->
+  <div id="gameRoot" hidden></div>
+
+  <!-- In-game HUD -->
+  <div id="hud" hidden>
+    <div class="hud-top">
+      <div class="panel hud-card">
+        <span class="swatch" id="hudSwatch"></span>
+        <div>
+          <div class="hud-title" id="hudCountry">—</div>
+          <div class="hud-sub"><span id="hudCells">0</span> hücre · <span id="hudOnline">1</span> oyuncu</div>
+        </div>
+      </div>
+      <div class="panel hud-card weapon">
+        <div>
+          <div class="hud-label">Silah</div>
+          <div class="hud-title" id="hudWeapon">Silah yok</div>
+          <div class="hud-sub" id="hudWeaponSub">İlk dağıtımı bekle</div>
+        </div>
+        <div class="drop">
+          <div class="hud-label">Sonraki dağıtım</div>
+          <div class="drop-time" id="hudDrop">--:--</div>
+        </div>
+      </div>
+    </div>
+
+    <ol id="feed" class="feed" aria-live="polite"></ol>
+
+    <div class="hud-bottom">
+      <div class="panel minimap-wrap">
+        <canvas id="minimap" width="360" height="180" aria-label="Dünya haritası"></canvas>
+      </div>
+      <div class="center-stack">
+        <div id="pushBox" class="panel push" hidden>
+          <div class="push-head"><span>Sınırı itiyorsun</span><b id="pushPct">%0</b></div>
+          <div class="push-bar"><i id="pushBar"></i><em title="Tek kişinin sınırı"></em></div>
+          <p id="pushHint">Yüklenmeye devam et.</p>
+        </div>
+        <div class="hp" aria-label="Can"><i id="hpBar"></i><span id="hpText">100</span></div>
+      </div>
+      <div class="panel help">
+        <div><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> yürü, sınıra yüklen</div>
+        <div><kbd>Fare</kbd> nişan al · <kbd>Sol tık</kbd> ateş</div>
+        <div><kbd>Tekerlek</kbd> yakınlaş / uzaklaş</div>
+        <button class="btn ghost small" id="btnChangeCountry" type="button">Ülke değiştir</button>
+      </div>
+    </div>
+
+    <div id="deathBox" class="death" hidden>
+      <p class="death-title">Vuruldun</p>
+      <p id="deathText"></p>
+      <p class="death-timer">Yeniden doğuyorsun: <b id="deathTimer">5</b> sn</p>
+    </div>
+    <div id="toast" class="toast" hidden></div>
+    <div id="netBox" class="net" hidden>Bağlantı koptu. Yeniden bağlanılıyor…</div>
+  </div>
+
+  <!-- Step 1: name -->
+  <section id="scrLogin" class="screen">
+    <div class="card login-card">
+      <header class="brand">
+        <p class="eyebrow">Çok oyunculu sınır savaşı</p>
+        <h1>Hudut</h1>
+        <p class="tagline">Sınırı tek başına esnetirsin. Geçmek için takım gerekir.</p>
+      </header>
+      <ol class="rules">
+        <li><span><b>Ülkeni seç</b> ve o ülkenin topraklarında doğ.</span></li>
+        <li><span><b>Sınıra yürü ve yüklen.</b> Tek başına sınırı en fazla yarım hücre itersin. Aynı noktaya iki kişi yüklenince sınır ilerler.</span></li>
+        <li><span><b>Her <span id="ruleInterval">30 dakikada</span> rastgele silah</b> gelir. Silahla sınırı daha hızlı iter, karşı taraftakileri vurursun.</span></li>
+      </ol>
+      <form id="loginForm" class="stack" novalidate>
+        <label for="nameInput">Kullanıcı adı</label>
+        <input id="nameInput" name="name" maxlength="16" autocomplete="nickname" spellcheck="false" placeholder="ör. sinirbekcisi">
+        <p class="field-error" id="loginError" hidden></p>
+        <button class="btn primary" type="submit">Devam</button>
+      </form>
+      <button class="btn quick" id="quickBtn" type="button" hidden></button>
+      <p class="online"><span class="dot"></span><span id="onlineText">Sunucuya bağlanılıyor…</span></p>
+    </div>
+  </section>
+
+  <!-- Step 2: character -->
+  <section id="scrChar" class="screen" hidden>
+    <div class="card char-card">
+      <div class="char-preview">
+        <canvas id="charCanvas" aria-label="Karakter önizlemesi"></canvas>
+        <p class="hint">Sürükleyerek döndür</p>
+      </div>
+      <div class="char-options">
+        <header>
+          <p class="eyebrow">Adım 2 / 3</p>
+          <h2>Karakterini tasarla</h2>
+        </header>
+        <div class="opt"><span class="opt-label">Ten</span><div class="swatches" data-key="skin" role="radiogroup" aria-label="Ten rengi"></div></div>
+        <div class="opt"><span class="opt-label">Üst</span><div class="swatches" data-key="shirt" role="radiogroup" aria-label="Üst rengi"></div></div>
+        <div class="opt"><span class="opt-label">Alt</span><div class="swatches" data-key="pants" role="radiogroup" aria-label="Alt rengi"></div></div>
+        <div class="opt"><span class="opt-label">Kafa</span><div class="chips" data-key="head" role="radiogroup" aria-label="Kafa şekli"></div></div>
+        <div class="opt"><span class="opt-label">Başlık</span><div class="chips" data-key="hat" role="radiogroup" aria-label="Başlık"></div></div>
+        <div class="row">
+          <button class="btn ghost" id="charBack" type="button">Geri</button>
+          <button class="btn ghost" id="charRandom" type="button">Rastgele</button>
+          <button class="btn primary grow" id="charNext" type="button">Ülke seç</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Step 3: country -->
+  <section id="scrCountry" class="screen" hidden>
+    <div class="card country-card">
+      <header class="country-head">
+        <div>
+          <p class="eyebrow">Adım 3 / 3</p>
+          <h2>Nerede doğacaksın?</h2>
+        </div>
+        <button class="btn ghost" id="countryBack" type="button">Karakter</button>
+      </header>
+      <div class="country-body">
+        <div class="map-wrap" id="mapWrap">
+          <canvas id="pickMap" aria-label="Ülke seçim haritası"></canvas>
+          <div class="map-tip" id="mapTip" hidden></div>
+        </div>
+        <aside class="country-side">
+          <input id="countrySearch" type="search" placeholder="Ülke ara" autocomplete="off" aria-label="Ülke ara">
+          <ul id="countryList" class="country-list" role="listbox" aria-label="Ülkeler"></ul>
+          <div class="pick-box">
+            <p id="pickInfo">Haritadan ya da listeden bir ülke seç.</p>
+            <p class="field-error" id="joinError" hidden></p>
+            <button class="btn primary" id="joinBtn" type="button" disabled>Ülke seç</button>
+          </div>
+        </aside>
+      </div>
+    </div>
+  </section>
+
+  <script type="module" src="/js/main.js"></script>
+</body>
+</html>
